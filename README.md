@@ -66,26 +66,34 @@ autodev/
 │   ├── application/                # 应用层（协调端口 + 执行流转）
 │   │   ├── context.py              # StageContext（端口和策略聚合）
 │   │   ├── engine.py               # 状态机引擎（fetch → push → handle loop）
-│   │   ├── handlers/               # 9 个阶段处理器
-│   │   │   ├── handler.py          # 处理器基类
-│   │   │   ├── intake.py           # 需求接入
-│   │   │   ├── triage.py           # 分诊分级
-│   │   │   ├── context_gather.py   # 上下文收集
-│   │   │   ├── design.py           # 方案设计
-│   │   │   ├── review.py           # 方案评审
-│   │   │   ├── impl.py             # 编码实现
-│   │   │   ├── accept_criteria.py  # 验收标准
-│   │   │   ├── verify.py           # 验收测试
-│   │   │   └── submit_mr.py        # 提交 MR
+│   │   ├── handlers.py             # 9 个阶段处理器（handle_intake、handle_triage、handle_context、handle_design、handle_review、handle_impl、handle_accept、handle_verify、handle_submit_mr）
 │   │   └── entrypoints.py          # API：create_work_item / resume_work_item
 │   │
 │   └── adapters/                   # 适配器（外部系统 ACL）
-│       ├── repo_sqlite.py          # WorkItemRepository 的 SQLite 实现
-│       └── event_memory.py         # EventPublisher 的内存实现
+│       ├── sqlite_repository.py    # WorkItemRepository 的 SQLite 实现
+│       ├── memory_repository.py    # 内存存储实现
+│       └── event_bus.py            # EventPublisher 实现
 │
 ├── tests/                          # 测试
-│   ├── unit/                       # 单元测试（domain/application）
-│   └── e2e/                        # 端到端测试
+│   ├── domain/                     # 领域模型单元测试
+│   │   ├── test_enums.py           # 枚举测试
+│   │   ├── test_outcome.py         # Outcome 值对象测试
+│   │   ├── test_policies.py        # 策略测试
+│   │   ├── test_value_objects.py   # 值对象测试
+│   │   └── test_work_item.py       # WorkItem 聚合根测试
+│   ├── application/                # 应用层单元测试
+│   │   ├── test_engine.py          # 状态机引擎测试
+│   │   ├── test_entrypoints.py     # API 测试
+│   │   ├── test_handlers_back.py   # 后置阶段处理器测试
+│   │   └── test_handlers_front.py  # 前置阶段处理器测试
+│   ├── adapters/                   # 适配器单元测试
+│   │   └── test_sqlite_repository.py # SQLite 存储库测试
+│   ├── e2e/                        # 端到端测试
+│   │   └── test_walking_skeleton.py # 行走骨架场景测试
+│   ├── conftest.py                 # pytest 配置与 fixtures
+│   ├── fakes.py                    # 假实现（stub/mock 适配器）
+│   ├── test_fakes.py               # 假实现自身的测试
+│   └── test_sanity.py              # 健全性检查
 │
 ├── docs/
 │   ├── architecture/               # 架构和战略文档
