@@ -4,7 +4,6 @@ import pytest
 from autodev.domain.policies import TriagePolicy, GatePolicy
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
-from autodev.adapters.event_bus import InMemoryEventBus
 from tests.fakes import (FakeWorkspace, FakeContext, FakeDesign, FakeReview,
                          FakeExecution, FakeVerification, FakeDelivery)
 
