@@ -9,11 +9,12 @@ from autodev.domain.work_item import WorkItem
 from autodev.domain.events import (
     HumanApprovalRequested, WorkItemCompleted, WorkItemFailed,
 )
+from autodev.domain.ports import WorkItemRepository, EventPublisher
 from autodev.application.context import StageContext
 from autodev.application.handlers import HANDLERS
 
 class Engine:
-    def __init__(self, repo, publisher, ctx: StageContext,
+    def __init__(self, repo: WorkItemRepository, publisher: EventPublisher, ctx: StageContext,
                  clock: Callable[[], datetime],
                  transition_rules: TransitionRules | None = None,
                  retry_policy: RetryPolicy | None = None) -> None:

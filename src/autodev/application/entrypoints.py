@@ -6,10 +6,13 @@ from autodev.domain.errors import InvariantError
 from autodev.domain.value_objects import RepoRef, Requirement, AutonomyDial
 from autodev.domain.work_item import WorkItem
 from autodev.domain.events import WorkItemCreated, WorkItemFailed
+from autodev.domain.ports import WorkItemRepository, EventPublisher
+from autodev.application.engine import Engine
 
 GATE_RESUME_TARGET = {GatePoint.REVIEW_GATE: S.IMPL, GatePoint.MERGE_GATE: S.DONE}
 
-def create_work_item(repo, publisher, *, work_item_id: WorkItemId, repo_ref: RepoRef,
+def create_work_item(repo: WorkItemRepository, publisher: EventPublisher, *,
+                     work_item_id: WorkItemId, repo_ref: RepoRef,
                      requirement: Requirement, autonomy_dial: AutonomyDial,
                      now: datetime) -> WorkItem:
     wi = WorkItem.create(work_item_id, repo_ref, requirement, autonomy_dial, now)
@@ -17,11 +20,11 @@ def create_work_item(repo, publisher, *, work_item_id: WorkItemId, repo_ref: Rep
     publisher.publish(WorkItemCreated(wi.id))
     return wi
 
-def advance_work_item(work_item_id: WorkItemId, repo, engine) -> None:
+def advance_work_item(work_item_id: WorkItemId, repo: WorkItemRepository, engine: Engine) -> None:
     engine.advance(repo.get(work_item_id))
 
-def resume_work_item(work_item_id: WorkItemId, approved: bool, repo, engine,
-                     now: datetime) -> None:
+def resume_work_item(work_item_id: WorkItemId, approved: bool, repo: WorkItemRepository,
+                     engine: Engine, now: datetime) -> None:
     wi = repo.get(work_item_id)
     if wi.state is not S.WAIT_HUMAN:
         raise InvariantError("resume requires WAIT_HUMAN")
