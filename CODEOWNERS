@@ -16,11 +16,8 @@ src/autodev/domain/ @your-team
 src/autodev/application/ @your-team
 
 # Adapter layers (external integrations)
-# 待填: Consider assigning per adapter (workspace, execution, verification, delivery, collaboration)
+# 待填: Consider assigning per adapter (sqlite_repository, memory_repository, event_bus)
 src/autodev/adapters/ @your-team
-
-# Port interfaces
-src/autodev/ports/ @your-team
 
 # Tests
 tests/ @your-team

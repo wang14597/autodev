@@ -25,11 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - WorkItem lifecycle: INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERIFY → SUBMIT_MR → DONE
   - 9 value objects (WorkItemId, TaskType, WorkflowState, Artifact, Verdict, FailureKind, etc.)
   - 4 domain services (TriagePolicy, GatePolicy, TransitionRules, RetryPolicy)
-  - 8 domain events (WorkItemCreated, DesignProposed, ReviewApproved, VerificationPassed, etc.)
+  - 4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
   - Anti-Corruption Layer (ACL) port interfaces for workspace, execution, verification, delivery, collaboration
 
 - **State Machine Engine (Task B2):** Production-grade state machine implementation
-  - 11 workflow states with legal transitions validated
+  - 12 workflow states with legal transitions validated
   - Retry ledger and failure categorization (transient / logic / fatal)
   - Human gate (WAIT_HUMAN) as first-class state
   - Artifact versioning (append-only semantics)
@@ -89,5 +89,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/autodev/autodev/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/autodev/autodev/releases/tag/v0.1.0
+<!-- 待填: GitLab 仓库地址（项目托管于 GitLab，非 GitHub；远程仓库 URL 待定） -->
+[Unreleased]: #
+[0.1.0]: #

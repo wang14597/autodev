@@ -57,8 +57,8 @@ autodev/
 │   │   ├── enums.py                # 枚举：TaskType、WorkflowState、FailureKind 等
 │   │   ├── errors.py               # 领域异常（InvariantError 等）
 │   │   ├── value_objects.py        # Requirement、AutonomyDial、RepoRef 等值对象
-│   │   ├── artifacts.py            # 9 个阶段产物（TriageArtifact...DeliveryArtifact）
-│   │   ├── events.py               # 领域事件（WorkItemTriaged、ReviewApproved 等）
+│   │   ├── artifacts.py            # 8 个阶段产物（TriageArtifact...DeliveryArtifact）
+│   │   ├── events.py               # 领域事件（WorkItemCreated、HumanApprovalRequested、WorkItemCompleted、WorkItemFailed）
 │   │   ├── work_item.py            # WorkItem 聚合根 + 状态不变式
 │   │   ├── policies.py             # TriagePolicy、GatePolicy、TransitionRules、RetryPolicy
 │   │   └── ports.py                # 出站端口协议（Protocol）定义
@@ -167,7 +167,7 @@ ruff check .
 
 ✅ **领域模型与核心编排**
 - WorkItem 聚合根及其完整生命周期
-- 11 个工作流状态（INTAKE → DONE，含 WAIT_HUMAN、FAILED、回退）
+- 12 个工作流状态（INTAKE → DONE，含 WAIT_HUMAN、FAILED、回退）
 - 9 阶段处理器（需求→分诊→上下文→设计→评审→实现→验收标准→验收→提 MR）
 
 ✅ **领域服务与策略**

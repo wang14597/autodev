@@ -42,7 +42,7 @@ mypy src
 
 ## Project Architecture
 
-AutoDev implements a **Domain-Driven Design (DDD)** architecture organized around the concept of a `WorkItem`—a research task flowing through multiple stages (intake → design → implementation → verification → delivery).
+AutoDev implements a **Domain-Driven Design (DDD)** architecture organized around the concept of a `WorkItem`—a 研发任务 (dev work item) flowing through multiple stages (intake → design → implementation → verification → delivery).
 
 For detailed architecture and strategic direction, see:
 - [`docs/architecture/2026-07-15-strategic-direction-and-domain-model.md`](docs/architecture/2026-07-15-strategic-direction-and-domain-model.md)
@@ -53,22 +53,20 @@ For detailed architecture and strategic direction, see:
 ```
 autodev/
 ├── src/autodev/
-│   ├── domain/           # Core domain: WorkItem, policies, events (NO external SDK imports)
+│   ├── domain/           # Core domain: WorkItem, policies, events, ports.py (NO external SDK imports)
 │   ├── application/      # Application services: stage handlers, orchestration engine
-│   ├── adapters/         # Anti-Corruption Layers (ACL) for external systems
-│   │   ├── workspace/    # Git worktree/mirror management
-│   │   ├── execution/    # Claude Code integration
-│   │   ├── verification/ # Test/lint/build runners
-│   │   ├── delivery/     # GitLab MR management
-│   │   ├── collaboration/ # Lark/Feishu notifications & approvals
-│   │   └── repo/         # SQLite persistence
-│   └── ports/            # Port interfaces (contracts between domain & adapters)
+│   └── adapters/         # Anti-Corruption Layers (ACL) for external systems (flat, currently)
+│       ├── sqlite_repository.py   # WorkItemRepository → SQLite persistence
+│       ├── memory_repository.py   # WorkItemRepository → in-memory implementation
+│       └── event_bus.py           # EventPublisher → in-memory event bus
 ├── tests/                # Test suite mirroring src/ structure
 ├── docs/
 │   ├── architecture/     # Strategic vision & domain model
 │   └── adr/              # Architecture Decision Records
 └── [config files]
 ```
+
+Note: port interfaces (contracts between domain & adapters) live in `src/autodev/domain/ports.py`, not a separate `ports/` package. Additional ACL adapters (workspace, execution, verification, delivery, collaboration) are planned for Slice 2 and do not exist yet.
 
 ### Core Domain Rules (铁律 / Hard Rules)
 
@@ -84,7 +82,7 @@ The core domain (`src/autodev/domain/`) must **never import external SDK concept
 #### Rule 2: All External Interactions via ACL (一切外部皆 ACL)
 All communication with external systems (git, GitLab, Lark, Claude, test tools) must be wrapped in **Anti-Corruption Layer (ACL) adapters** in `src/autodev/adapters/`. The domain sees only **ports** (interfaces), not implementations.
 
-**Example:** Workspace operations flow through a `WorkspacePort` contract; the actual git worktree logic lives in `adapters/workspace/` and translates between domain concepts and git commands.
+**Example:** Workspace operations flow through a `WorkspacePort` contract defined in `domain/ports.py`; the real git worktree implementation is planned for `adapters/` in Slice 2 (currently a fake/stub).
 
 #### Rule 3: Artifact Versioning (产物只进不改 / Append-Only)
 Artifacts (design docs, test results, MR details, etc.) are **version-listed per stage** and **never modified or deleted once created**. Each stage execution appends a new version; failed retries and rollbacks naturally produce audit trails.
@@ -123,13 +121,13 @@ footer (optional)
 - `test:` Test additions or updates
 - `chore:` Build, deps, tooling, CI configuration
 
-**Scope:** Affected module (e.g., `domain`, `adapters/workspace`, `application/handlers`).
+**Scope:** Affected module (e.g., `domain`, `adapters`, `application/handlers`).
 
 **Examples:**
 ```
 feat(domain): add RetryLedger to WorkItem aggregte
 
-fix(adapters/execution): handle Claude Code timeout gracefully
+fix(adapters): handle SQLite connection timeout gracefully
 
 docs(architecture): update ADR-001 on ACL contract versioning
 ```

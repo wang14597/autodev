@@ -60,7 +60,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 **目标**：最薄垂直线：SmallChange（小改动/明确 Bug）任务从创建、分诊、上下文、设计、评审、实现、验收、提 MR 到等待合并的完整闭环。
 
 **实现范围**：
-- ✓ 核心编排域（WorkItem 聚合、11 个工作流状态、9 个阶段处理器）
+- ✓ 核心编排域（WorkItem 聚合、12 个工作流状态、9 个阶段处理器）
 - ✓ 领域服务（TriagePolicy、GatePolicy、TransitionRules、RetryPolicy）
 - ✓ 端口协议（9 个出站端口定义）
 - ✓ 2 个真实适配器：SQLite 仓储 + 内存事件总线
