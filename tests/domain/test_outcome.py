@@ -1,8 +1,8 @@
-from autodev.domain.enums import GatePoint, FailureKind
-from autodev.domain.outcome import StageOutcome
 from autodev.domain.artifacts import DesignArtifact
-from autodev.domain.events import WorkItemCreated, HumanApprovalRequested
+from autodev.domain.enums import FailureKind, GatePoint
+from autodev.domain.events import HumanApprovalRequested, WorkItemCreated
 from autodev.domain.ids import WorkItemId
+from autodev.domain.outcome import StageOutcome
 
 
 def test_stage_outcome_variants():

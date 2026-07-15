@@ -1,23 +1,36 @@
 from __future__ import annotations
+
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable
-from autodev.domain.enums import WorkflowState as S, FailureKind
-from autodev.domain.errors import StageError
-from autodev.domain.policies import TransitionRules, RetryPolicy
-from autodev.domain.value_objects import WorkspaceHandle
-from autodev.domain.work_item import WorkItem
-from autodev.domain.events import (
-    HumanApprovalRequested, WorkItemCompleted, WorkItemFailed,
-)
-from autodev.domain.ports import WorkItemRepository, EventPublisher
+from typing import cast
+
 from autodev.application.context import StageContext
 from autodev.application.handlers import HANDLERS
+from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.enums import FailureKind
+from autodev.domain.enums import WorkflowState as S
+from autodev.domain.errors import StageError
+from autodev.domain.events import (
+    HumanApprovalRequested,
+    WorkItemCompleted,
+    WorkItemFailed,
+)
+from autodev.domain.policies import RetryPolicy, TransitionRules
+from autodev.domain.ports import EventPublisher, WorkItemRepository
+from autodev.domain.value_objects import WorkspaceHandle
+from autodev.domain.work_item import WorkItem
+
 
 class Engine:
-    def __init__(self, repo: WorkItemRepository, publisher: EventPublisher, ctx: StageContext,
-                 clock: Callable[[], datetime],
-                 transition_rules: TransitionRules | None = None,
-                 retry_policy: RetryPolicy | None = None) -> None:
+    def __init__(
+        self,
+        repo: WorkItemRepository,
+        publisher: EventPublisher,
+        ctx: StageContext,
+        clock: Callable[[], datetime],
+        transition_rules: TransitionRules | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
         self.repo = repo
         self.publisher = publisher
         self.ctx = ctx
@@ -65,7 +78,8 @@ class Engine:
             wi.record_retry(decision.key)  # 状态不变, 下轮重试
         elif decision.action == "rollback":
             wi.record_retry(decision.key)
-            wi.transition_to(decision.target, f"rollback: {outcome.message}", now)
+            # rollback always carries a target state (RetryPolicy invariant)
+            wi.transition_to(cast(S, decision.target), f"rollback: {outcome.message}", now)
         else:  # fail
             origin = wi.state.name
             wi.transition_to(S.FAILED, f"failed: {outcome.message}", now)
@@ -75,13 +89,17 @@ class Engine:
         delivery = wi.artifacts.get("delivery")
         context = wi.artifacts.get("context")
         if context is not None:
-            self.ctx.workspace.cleanup(WorkspaceHandle(context.workspace_location, context.workspace_label))
+            context = cast(ContextArtifact, context)
+            self.ctx.workspace.cleanup(
+                WorkspaceHandle(context.workspace_location, context.workspace_label)
+            )
         change_request_url = getattr(delivery, "change_request_url", "")
         self.publisher.publish(WorkItemCompleted(wi.id, change_request_url))
 
 
 def _to_failure(kind: FailureKind, message: str):
     from autodev.domain.outcome import StageOutcome
+
     return StageOutcome.fail(kind, message)
 
 

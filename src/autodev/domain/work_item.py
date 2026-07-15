@@ -1,10 +1,14 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from autodev.domain.ids import WorkItemId
-from autodev.domain.enums import WorkflowState as S, WorkflowState, TaskType, GatePoint
+
+from autodev.domain.enums import GatePoint, TaskType, WorkflowState
+from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import InvariantError
-from autodev.domain.value_objects import RepoRef, Requirement, AutonomyDial, RetryLedger, Cost
+from autodev.domain.ids import WorkItemId
+from autodev.domain.value_objects import AutonomyDial, Cost, RepoRef, Requirement, RetryLedger
+
 
 @dataclass(frozen=True)
 class StateTransition:
@@ -13,13 +17,25 @@ class StateTransition:
     reason: str
     at: datetime
 
+
 _TERMINAL = {S.DONE, S.FAILED}
 
+
 def _build_allowed() -> dict[WorkflowState, frozenset[WorkflowState]]:
-    linear = [S.INTAKE, S.TRIAGE, S.CONTEXT, S.DESIGN, S.REVIEW,
-              S.IMPL, S.ACCEPT, S.VERIFY, S.SUBMIT_MR, S.DONE]
+    linear = [
+        S.INTAKE,
+        S.TRIAGE,
+        S.CONTEXT,
+        S.DESIGN,
+        S.REVIEW,
+        S.IMPL,
+        S.ACCEPT,
+        S.VERIFY,
+        S.SUBMIT_MR,
+        S.DONE,
+    ]
     allowed: dict[WorkflowState, set[WorkflowState]] = {s: set() for s in S}
-    for a, b in zip(linear, linear[1:]):
+    for a, b in zip(linear, linear[1:], strict=False):
         allowed[a].add(b)
     # 回退
     allowed[S.VERIFY].add(S.IMPL)
@@ -33,6 +49,7 @@ def _build_allowed() -> dict[WorkflowState, frozenset[WorkflowState]]:
         if s not in _TERMINAL:
             allowed[s].add(S.FAILED)
     return {s: frozenset(v) for s, v in allowed.items()}
+
 
 @dataclass
 class WorkItem:
@@ -53,10 +70,22 @@ class WorkItem:
     ALLOWED = _build_allowed()
 
     @classmethod
-    def create(cls, id: WorkItemId, repo_ref: RepoRef, requirement: Requirement,
-               autonomy_dial: AutonomyDial, now: datetime) -> "WorkItem":
-        return cls(id=id, repo_ref=repo_ref, requirement=requirement,
-                   autonomy_dial=autonomy_dial, created_at=now, updated_at=now)
+    def create(
+        cls,
+        id: WorkItemId,
+        repo_ref: RepoRef,
+        requirement: Requirement,
+        autonomy_dial: AutonomyDial,
+        now: datetime,
+    ) -> WorkItem:
+        return cls(
+            id=id,
+            repo_ref=repo_ref,
+            requirement=requirement,
+            autonomy_dial=autonomy_dial,
+            created_at=now,
+            updated_at=now,
+        )
 
     def is_runnable(self) -> bool:
         return self.state not in (S.DONE, S.FAILED, S.WAIT_HUMAN)

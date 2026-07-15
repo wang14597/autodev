@@ -1,7 +1,9 @@
 # src/autodev/adapters/memory_repository.py
 from __future__ import annotations
+
 from autodev.domain.ids import WorkItemId
 from autodev.domain.work_item import WorkItem
+
 
 class InMemoryWorkItemRepository:
     def __init__(self) -> None:

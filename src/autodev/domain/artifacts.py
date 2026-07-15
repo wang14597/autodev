@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 from autodev.domain.enums import TaskType, WorkspaceMode
 from autodev.domain.value_objects import Verdict
 
