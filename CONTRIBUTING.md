@@ -30,12 +30,15 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
-### Run Linter (coming in B5)
+### Run Linter
 ```bash
 ruff check .
+
+# Auto-format
+ruff format .
 ```
 
-### Run Type Checker (coming in B5)
+### Run Type Checker
 ```bash
 mypy src
 ```
@@ -66,7 +69,7 @@ autodev/
 └── [config files]
 ```
 
-Note: port interfaces (contracts between domain & adapters) live in `src/autodev/domain/ports.py`, not a separate `ports/` package. Additional ACL adapters (workspace, execution, verification, delivery, collaboration) are planned for Slice 2 and do not exist yet.
+Note: port interfaces (contracts between domain & adapters) live in `src/autodev/domain/ports.py`, not a separate `ports/` package. 9 ports are defined there (WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher); only `WorkItemRepository` and `EventPublisher` have real adapters today (SQLite/in-memory repository, in-memory event bus). The remaining 7 (Workspace, Context, Design, Review, Execution, Verification, Delivery) are fakes-only in tests and are planned for real ACL implementations in Slice 2. There is no separate "CollaborationPort" — Collaboration is a bounded context (e.g., Feishu/Lark notifications and approvals), not a code port.
 
 ### Core Domain Rules (铁律 / Hard Rules)
 

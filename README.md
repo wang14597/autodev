@@ -154,12 +154,17 @@ pytest tests/e2e/ -v
 # 带覆盖率报告
 pytest --cov=src/autodev --cov-report=term-missing tests/
 
-# 类型检查（后续支持）
+# 类型检查
 mypy src
 
-# 代码格式与 lint（后续支持）
+# 代码 lint（含格式检查）
 ruff check .
+
+# 自动格式化
+ruff format .
 ```
+
+详见 `CONTRIBUTING.md` 的 Linter / Type Checker 章节。
 
 ## 当前状态
 
@@ -191,7 +196,7 @@ ruff check .
 
 | 切片 | 重点 | 计划时间 |
 |------|------|---------|
-| **切片 2：真实 ACL + E2E 冒烟** | 实现 Workspace（git mirror/worktree）、Execution（Claude Code runner）、Verification（测试/lint/构建）、Delivery（GitLab MR）、Collaboration（Feishu 通知/审批）的真实适配器；端到端冒烟测试 SmallChange 完整闭环 | ▢ |
+| **切片 2：真实 ACL + E2E 冒烟** | 实现 Workspace（git mirror/worktree）、Context/Design/Review（Claude Code runner）、Execution（Claude Code runner）、Verification（测试/lint/构建）、Delivery（GitLab MR）7 个端口的真实适配器；集成 Feishu/Lark 通知与审批（Collaboration 限界上下文，非独立端口）；端到端冒烟测试 SmallChange 完整闭环 | ▢ |
 | **切片 3：中/复杂特性重流程** | 支持 MediumFeature / ComplexFeature 任务类型；加深 Triage（多维度路由）、Solution（详细方案+多轮评审）、Context（跨仓/历史检索）；更强的 AI 智能体能力 | ▢ |
 | **切片 4：信任梯度自动合并** | 按任务类型/仓库的精细 AutonomyDial 配置；逐步放开 MERGE_GATE，实现全自动无人值守合并；日志/看板支持 | ▢ |
 | **横向：可观测 + 并发 + 安全** | 完整 trace/日志/成本 dashboard；多 worker 并发处理；权限模型与凭证管理；AI 执行沙箱与 prompt 注入防护 | ▢ |
@@ -226,7 +231,7 @@ ruff check .
   - 平台拆解、架构、9 个阶段的具体设计
   - **阅读顺序**：了解 spec 后阅读
 
-- **[ADR 架构决策记录](docs/adr/README.md)**（规划中）
+- **[ADR 架构决策记录](docs/adr/README.md)**
   - 轻量状态机选型、产物版本化、领域语言中性化
 
 ### 实现计划
@@ -261,7 +266,7 @@ A：支持失败时的精确回退与重跑审计。一个阶段失败后，可�
 
 ## 贡献指南
 
-参见 `CONTRIBUTING.md`（规划中）。核心要求：
+参见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。核心要求：
 - 遵守职责铁律（domain/ 不含外部 SDK；外部交互走 ACL）
 - 统一语言：WorkItem、Artifact、Gate、AutonomyDial 等术语禁止同义词
 - 产物只进不改：add_artifact 永不覆盖已存版本
@@ -273,6 +278,6 @@ A：支持失败时的精确回退与重跑审计。一个阶段失败后，可�
 
 ---
 
-**最后更新**：2026-07-15  
+**最后更新**：2026-07-16  
 **项目负责人**：AutoDev Team  
 **反馈/问题**：见项目 GitLab issues
