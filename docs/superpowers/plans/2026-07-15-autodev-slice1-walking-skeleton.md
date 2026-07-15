@@ -19,6 +19,13 @@
 - 统一语言：WorkItem / Requirement / Triage / Artifact / Gate / AutonomyDial / StageOutcome / FailureKind（禁止同义词）。
 - 每个任务结束必须 `pytest` 全绿并 commit。
 
+> **执行后修订（铁律#1 中性化）**：为保持核心域不含 git/GitLab 词汇，下列标识在最终代码中已重命名（本文各代码块用的是旧名，按此表读）：
+> `WorkspaceMode.WORKTREE/CLONE → REUSE/FETCH`（CREATE 不变）；
+> `WorkspaceHandle.worktree_path/branch → location/label`；
+> `ContextArtifact.worktree_path/branch → workspace_location/workspace_label`；
+> `DeliveryArtifact.mr_url/branch → change_request_url/label`。
+> git 的 worktree/clone/mr 机制只存在于 Workspace/Delivery 的 ACL 适配器（slice 2）。
+
 ## File Structure
 
 ```
@@ -107,7 +114,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.sqlite
+*.egg-info/
 ```
+（`*.egg-info/` 是 `pip install -e` 生成的构建元数据，不入库。）
 
 - [ ] **Step 3: 写 sanity 测试**
 
@@ -608,10 +617,13 @@ git add src/autodev/domain tests/domain && git commit -m "feat(domain): 产物�
 - Consumes: `ids`、`enums`、`errors`、`value_objects`、`artifacts`。
 - Produces：
   - `StateTransition(from_state: WorkflowState, to_state: WorkflowState, reason: str, at: datetime)` frozen。
-  - `WorkItem` 聚合（可变 dataclass），字段：`id: WorkItemId`、`repo_ref: RepoRef`、`requirement: Requirement`、`autonomy_dial: AutonomyDial`、`type: TaskType | None = None`、`state: WorkflowState = INTAKE`、`artifacts: dict[str, object]`、`history: list[StateTransition]`、`retry_ledger: RetryLedger`、`cost: Cost`、`pending_gate: GatePoint | None = None`、`created_at/updated_at: datetime`。
+  - `WorkItem` 聚合（可变 dataclass），字段：`id: WorkItemId`、`repo_ref: RepoRef`、`requirement: Requirement`、`autonomy_dial: AutonomyDial`、`type: TaskType | None = None`、`state: WorkflowState = INTAKE`、`artifact_versions: dict[str, list[object]]`（按阶段键的版本列表，只追加不改）、`history: list[StateTransition]`、`retry_ledger: RetryLedger`、`cost: Cost`、`pending_gate: GatePoint | None = None`、`created_at/updated_at: datetime`。
   - 类方法 `WorkItem.create(id, repo_ref, requirement, autonomy_dial, now) -> WorkItem`。
   - 方法：
-    - `add_artifact(key: str, artifact: object) -> None`（重复 key 抛 `InvariantError`）
+    - `add_artifact(key: str, artifact: object) -> None`（向该键版本列表**追加**新版本；永不修改/删除已存版本；重复 key 不再抛错）
+    - `current_artifact(key: str) -> object`（该键最新版本；缺失抛 `KeyError`）
+    - `versions_of(key: str) -> tuple`（该键全部版本，按加入顺序）
+    - property `artifacts -> dict[str, object]`（便捷只读视图：每键最新版本；供 `wi.artifacts["context"]`、`"triage" in wi.artifacts` 等读取）
     - `transition_to(new_state: WorkflowState, reason: str, now: datetime) -> None`（非法转移抛 `InvariantError`）
     - `suspend(gate_point: GatePoint, reason: str, now: datetime) -> None`
     - `resume_to(target: WorkflowState, reason: str, now: datetime) -> None`（仅当 state==WAIT_HUMAN）
@@ -646,11 +658,15 @@ def test_starts_in_intake_and_runnable():
     wi = _wi()
     assert wi.state is S.INTAKE and wi.is_runnable()
 
-def test_artifacts_are_append_only():
+def test_artifacts_append_versions_without_mutating_prior():
     wi = _wi()
-    wi.add_artifact("design", DesignArtifact("x", ()))
-    with pytest.raises(InvariantError):
-        wi.add_artifact("design", DesignArtifact("y", ()))
+    a1 = DesignArtifact("x", ())
+    a2 = DesignArtifact("y", ())
+    wi.add_artifact("design", a1)
+    wi.add_artifact("design", a2)          # 回退重跑：追加新版本, 不覆盖
+    assert wi.current_artifact("design") is a2      # 当前 = 最新版本
+    assert wi.versions_of("design") == (a1, a2)     # 两个版本都在, 顺序保留
+    assert wi.artifacts["design"] is a2             # 便捷视图取最新
 
 def test_illegal_transition_rejected():
     wi = _wi()
@@ -731,7 +747,7 @@ class WorkItem:
     autonomy_dial: AutonomyDial
     type: TaskType | None = None
     state: WorkflowState = S.INTAKE
-    artifacts: dict[str, object] = field(default_factory=dict)
+    artifact_versions: dict[str, list] = field(default_factory=dict)
     history: list[StateTransition] = field(default_factory=list)
     retry_ledger: RetryLedger = field(default_factory=RetryLedger)
     cost: Cost = field(default_factory=Cost)
@@ -750,10 +766,21 @@ class WorkItem:
     def is_runnable(self) -> bool:
         return self.state not in (S.DONE, S.FAILED, S.WAIT_HUMAN)
 
+    @property
+    def artifacts(self) -> dict[str, object]:
+        """便捷只读视图：每个阶段键的最新版本产物。"""
+        return {k: v[-1] for k, v in self.artifact_versions.items()}
+
     def add_artifact(self, key: str, artifact: object) -> None:
-        if key in self.artifacts:
-            raise InvariantError(f"artifact '{key}' already exists (append-only)")
-        self.artifacts[key] = artifact
+        # 版本化 append-only：向该键的版本列表追加新版本，永不修改/删除已存版本。
+        # 回退重跑（VERIFY→IMPL、REVIEW→DESIGN）会为同一键追加新版本，形成审计轨迹。
+        self.artifact_versions.setdefault(key, []).append(artifact)
+
+    def current_artifact(self, key: str) -> object:
+        return self.artifact_versions[key][-1]
+
+    def versions_of(self, key: str) -> tuple:
+        return tuple(self.artifact_versions.get(key, ()))
 
     def transition_to(self, new_state: WorkflowState, reason: str, now: datetime) -> None:
         if new_state not in self.ALLOWED[self.state]:
@@ -1035,6 +1062,7 @@ from autodev.domain.artifacts import (
     AcceptanceArtifact, VerificationArtifact, DeliveryArtifact,
 )
 from autodev.domain.events import DomainEvent
+from autodev.domain.work_item import WorkItem
 
 class WorkspacePort(Protocol):
     def repo_status(self, repo: RepoRef) -> RepoStatus: ...
@@ -1062,9 +1090,9 @@ class DeliveryPort(Protocol):
                handle: WorkspaceHandle) -> DeliveryArtifact: ...
 
 class WorkItemRepository(Protocol):
-    def save(self, work_item) -> None: ...
-    def get(self, work_item_id: WorkItemId): ...
-    def claim_runnable(self) -> list: ...
+    def save(self, work_item: WorkItem) -> None: ...
+    def get(self, work_item_id: WorkItemId) -> WorkItem: ...
+    def claim_runnable(self) -> list[WorkItem]: ...
 
 class EventPublisher(Protocol):
     def publish(self, event: DomainEvent) -> None: ...
@@ -1939,6 +1967,37 @@ def test_save_is_upsert(tmp_path):
     wi = _wi(); repo.save(wi)
     wi.transition_to(S.CONTEXT, "next", NOW); repo.save(wi)
     assert repo.get(wi.id).state is S.CONTEXT
+
+def test_full_roundtrip_fidelity(tmp_path):
+    from autodev.domain.enums import GatePoint
+    from autodev.domain.value_objects import AutonomyDial, Cost
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))
+    wi = WorkItem.create(WorkItemId.new(), RepoRef("repo-a"),
+                         Requirement("fix typo", "repo-a", ("hint-x",), "raw text"), dial, NOW)
+    wi.type = TaskType.SMALL_CHANGE
+    # 多版本产物（回退重跑场景）: 同一键两个版本
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.CLONE))
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.WORKTREE))
+    wi.transition_to(S.TRIAGE, "ok", NOW)
+    wi.record_retry("VERIFY:logic")
+    wi.add_cost(123)
+    repo.save(wi)
+    got = repo.get(wi.id)
+    # 全字段保真
+    assert got.repo_ref == RepoRef("repo-a")
+    assert got.requirement.acceptance_hints == ("hint-x",)
+    assert got.autonomy_dial == dial
+    assert got.retry_ledger.count("VERIFY:logic") == 1
+    assert got.cost == Cost(123)
+    assert got.created_at == NOW and got.updated_at is not None
+    assert got.history and got.history[-1].to_state is S.TRIAGE
+    # 多版本历史完整保留, 顺序不变
+    versions = got.versions_of("triage")
+    assert len(versions) == 2
+    assert versions[0].workspace_mode is WorkspaceMode.CLONE
+    assert versions[1].workspace_mode is WorkspaceMode.WORKTREE
+    assert got.artifacts["triage"].workspace_mode is WorkspaceMode.WORKTREE  # 当前=最新
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -1953,6 +2012,7 @@ Expected: FAIL。
 from __future__ import annotations
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from autodev.domain.ids import WorkItemId
 from autodev.domain.enums import WorkflowState, TaskType, WorkspaceMode, GatePoint
@@ -1974,8 +2034,15 @@ class SqliteWorkItemRepository:
             c.execute("CREATE TABLE IF NOT EXISTS work_items ("
                       "id TEXT PRIMARY KEY, state TEXT NOT NULL, data TEXT NOT NULL)")
 
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path)
+    @contextmanager
+    def _conn(self):
+        # 每次用完提交并关闭连接, 避免长跑进程句柄泄漏。
+        conn = sqlite3.connect(self._db_path)
+        try:
+            with conn:            # 事务: 成功提交, 异常回滚
+                yield conn
+        finally:
+            conn.close()          # 无论如何关闭连接
 
     def save(self, work_item: WorkItem) -> None:
         data = json.dumps(_to_dict(work_item))
@@ -2012,7 +2079,8 @@ def _to_dict(wi: WorkItem) -> dict:
         "autonomy_dial": [[t.name, r, g.name] for (t, r, g) in wi.autonomy_dial.auto_gates],
         "type": wi.type.name if wi.type else None,
         "state": wi.state.name,
-        "artifacts": {k: _artifact_to_dict(v) for k, v in wi.artifacts.items()},
+        "artifact_versions": {k: [_artifact_to_dict(a) for a in versions]
+                              for k, versions in wi.artifact_versions.items()},
         "history": [[h.from_state.name, h.to_state.name, h.reason, h.at.isoformat()]
                     for h in wi.history],
         "retry_ledger": list(wi.retry_ledger.counts),
@@ -2033,7 +2101,8 @@ def _from_dict(d: dict) -> WorkItem:
             (TaskType[t], r, GatePoint[g]) for (t, r, g) in d["autonomy_dial"])),
         type=TaskType[d["type"]] if d["type"] else None,
         state=WorkflowState[d["state"]],
-        artifacts={k: _artifact_from_dict(v) for k, v in d["artifacts"].items()},
+        artifact_versions={k: [_artifact_from_dict(a) for a in versions]
+                           for k, versions in d["artifact_versions"].items()},
         history=[StateTransition(WorkflowState[a], WorkflowState[b], reason,
                                  datetime.fromisoformat(at)) for (a, b, reason, at) in d["history"]],
         retry_ledger=RetryLedger(frozenset(tuple(x) for x in d["retry_ledger"])),

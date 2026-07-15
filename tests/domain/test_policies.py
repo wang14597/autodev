@@ -1,0 +1,48 @@
+from datetime import datetime
+from autodev.domain.enums import WorkflowState as S, WorkspaceMode, TaskType, GatePoint, FailureKind
+from autodev.domain.value_objects import (
+    RepoRef, Requirement, RepoStatus, AutonomyDial, RetryLedger,
+)
+from autodev.domain.work_item import WorkItem
+from autodev.domain.policies import TriagePolicy, GatePolicy, TransitionRules, RetryPolicy
+
+NOW = datetime(2026, 7, 15)
+
+def _wi(dial):
+    wi = WorkItem.create(__import__("autodev.domain.ids", fromlist=["WorkItemId"]).WorkItemId.new(),
+                         RepoRef("repo-a"), Requirement("g", "repo-a", (), "r"), dial, NOW)
+    wi.type = TaskType.SMALL_CHANGE
+    return wi
+
+def test_triage_picks_workspace_mode():
+    req = Requirement("g", "repo-a", (), "r")
+    assert TriagePolicy().triage(req, RepoStatus(True, True)).workspace_mode is WorkspaceMode.REUSE
+    assert TriagePolicy().triage(req, RepoStatus(False, True)).workspace_mode is WorkspaceMode.FETCH
+    assert TriagePolicy().triage(req, RepoStatus(False, False)).workspace_mode is WorkspaceMode.CREATE
+    assert TriagePolicy().triage(req, RepoStatus(True, True)).level is TaskType.SMALL_CHANGE
+
+def test_gate_policy_reads_dial():
+    human = GatePolicy().decide(_wi(AutonomyDial.all_human()), GatePoint.REVIEW_GATE)
+    assert human.needs_human
+    auto_dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))
+    assert not GatePolicy().decide(_wi(auto_dial), GatePoint.REVIEW_GATE).needs_human
+
+def test_transition_rules_linear():
+    assert TransitionRules().next_state(S.INTAKE) is S.TRIAGE
+    assert TransitionRules().next_state(S.SUBMIT_MR) is S.DONE
+
+def test_retry_policy_transient_then_fail():
+    p = RetryPolicy()
+    led = RetryLedger()
+    d = p.decide(S.CONTEXT, FailureKind.TRANSIENT, led)
+    assert d.action == "retry" and d.target is S.CONTEXT
+    led = led.incremented(d.key).incremented(d.key).incremented(d.key)
+    assert p.decide(S.CONTEXT, FailureKind.TRANSIENT, led).action == "fail"
+
+def test_retry_policy_logic_rollback_and_fatal():
+    p = RetryPolicy()
+    d = p.decide(S.VERIFY, FailureKind.LOGIC, RetryLedger())
+    assert d.action == "rollback" and d.target is S.IMPL
+    # 无回退目标的 logic 失败直接 fail
+    assert p.decide(S.CONTEXT, FailureKind.LOGIC, RetryLedger()).action == "fail"
+    assert p.decide(S.CONTEXT, FailureKind.FATAL, RetryLedger()).action == "fail"

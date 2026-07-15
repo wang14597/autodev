@@ -28,7 +28,7 @@ AutoDev 的目标是把一个标准研发团队的工作（需求 → 上下文 
 1. **核心域纯净**：核心编排上下文中**不得出现任何外部系统概念**（不出现 git / GitLab / 飞书 / Claude Code 的类型、字段、术语）。核心只认领域概念（WorkItem、Gate、Artifact、Verdict…）。
 2. **一切外部皆 ACL**：与外部系统/AI 的交互一律封装为**防腐层（Anti-Corruption Layer）适配器**，负责"外部 ↔ 领域语言"的双向翻译。核心通过**端口（Port）**依赖 ACL，而非依赖具体实现。
 3. **失败翻译前置**：外部异常在 ACL 边界翻译成领域的 `StageOutcome{failureKind}`；核心策略只认领域失败类型，不认原始异常/HTTP 码。
-4. **产物只进不改**：每阶段只向 WorkItem 追加自己的 Artifact，不修改前序产物。任一步失败，前序成果仍在，续跑不重来。
+4. **产物只进不改（版本化）**：产物按阶段键存为**版本列表**；阶段执行（含回退重跑）只能**追加新版本**，永不修改或删除已存版本。"当前产物" = 该键的最新版本。任一步失败前序成果仍在、续跑不重来；回退重跑（VERIFY→IMPL、REVIEW→DESIGN）天然产生新版本，形成重跑审计轨迹。
 5. **人审是一等状态**：门禁触发即挂起为 `WAIT_HUMAN`，由外部审批事件唤醒。无人值守 = 关掉该门禁开关，核心逻辑不变。
 6. **支撑域承载研发智慧，通用域只搬运**：Intake/Solution 产出领域产物（结构化需求、方案、验收标准）；通用域（Workspace/Execution/Verification/Delivery/Collaboration）不含业务决策。
 7. **一切失败终将收敛**：所有重试/回退都有硬上限，无任何无限打转路径；最坏结果永远是"干净地 `FAILED` 并通知人"。
@@ -124,7 +124,8 @@ WorkItem
   repoRef       : RepoRef             # 逻辑仓库标识, 不含 GitLab 具体字段
   state         : WorkflowState
   requirement   : Requirement         # 来自 Intake 的结构化产物
-  artifacts     : Artifacts           # 只进不改, 按阶段键入
+  artifact_versions : dict[str, list[Artifact]]  # 按阶段键的版本列表, 只追加不改
+                                        # 便捷读取: artifacts 属性取每键最新版, current_artifact(key) 取当前
   autonomyDial  : AutonomyDial         # 适用的门禁开关快照
   history       : [StateTransition]   # 转移与事件审计
   retryLedger   : RetryLedger         # 各阶段/回退环的计数
@@ -133,7 +134,7 @@ WorkItem
 ```
 
 **聚合不变式（由聚合自身守护）：**
-- 产物追加不可覆盖既有阶段产物（只进不改）。
+- 产物版本化只进不改：`add_artifact` 向该键的版本列表**追加**新版本，永不修改/删除已存版本；`current_artifact(key)` 取最新版本。
 - 状态转移必须为合法转移（非法转移被拒绝）。
 - 任一重试/回退计数越界 → 强制转 `FAILED`。
 - 处于 `WAIT_HUMAN` 时，非经对应 GatePoint 的 approval 事件不得推进。
@@ -145,7 +146,7 @@ WorkItem
 | `WorkItemId` | 标识 |
 | `TaskType` | SmallChange \| MediumFeature \| ComplexFeature（可扩展） |
 | `WorkflowState` | INTAKE, TRIAGE, CONTEXT, DESIGN, REVIEW, IMPL, ACCEPT, VERIFY, SUBMIT_MR, DONE, WAIT_HUMAN, FAILED |
-| `WorkspaceMode` | WORKTREE \| CLONE \| CREATE |
+| `WorkspaceMode` | REUSE \| FETCH \| CREATE（中性领域语义：复用本地已有 / 远端拉取 / 全新创建。git 的 worktree/clone 等机制由 Workspace ACL 翻译，不入核心） |
 | `RepoRef` | 逻辑仓库引用（名称/ID），无 GitLab 专有字段 |
 | `Requirement` | {goal, targetRepo, acceptanceHints, rawText} |
 | `Artifact` 家族 | Intake/Triage/Context/Design/Review/Impl/Acceptance/Verification/Delivery 各一型 |
