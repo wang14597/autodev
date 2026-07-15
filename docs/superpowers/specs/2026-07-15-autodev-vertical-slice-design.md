@@ -3,6 +3,23 @@
 > 日期：2026-07-15
 > 状态：设计已在头脑风暴中逐节获批，待用户通读评审
 > 项目根目录：`autodev/`
+> **架构基准**：本 spec 是《AutoDev — 战略方向与领域模型》（`docs/architecture/2026-07-15-strategic-direction-and-domain-model.md`）在"切片 1"范围内的实现级细化，须符合该基准；冲突以基准为准。
+
+## 0. 架构对齐（DDD）
+
+本 spec 遵循领域模型基准的**六边形架构（Ports & Adapters）**与职责铁律。术语映射：
+
+| 本 spec 用语 | 领域模型（权威） |
+|--------------|------------------|
+| Task | **WorkItem**（唯一聚合根，一致性边界） |
+| Engine | 应用层：跑 `TransitionRules` 推进聚合的循环 |
+| Handlers（九阶段） | 应用服务：协调出站端口 + 领域服务，产出 Artifact |
+| Adapters（Feishu/GitLab/ClaudeCodeRunner） | **ACL 适配器**，实现对应出站端口，翻译"外部↔领域" |
+| Store | `WorkItemRepository` 端口 + SQLite 适配器 |
+| Gate 控制器 | `GatePolicy` 领域服务 + `AutonomyDial` 值对象 |
+| 工作区准备（3 模式） | `WorkspacePort` + Workspace 上下文 |
+
+**须遵守的职责铁律**（详见基准第 2 节）：核心编排代码不得出现 git/GitLab/飞书/Claude 概念；外部交互一律走 ACL；外部异常在 ACL 边界翻译为领域 `StageOutcome{failureKind}`；产物只进不改；人审=挂起态。下文凡出现 "Task" 均指 **WorkItem**。
 
 ## 1. 背景与目标
 
