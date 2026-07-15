@@ -19,6 +19,13 @@
 - 统一语言：WorkItem / Requirement / Triage / Artifact / Gate / AutonomyDial / StageOutcome / FailureKind（禁止同义词）。
 - 每个任务结束必须 `pytest` 全绿并 commit。
 
+> **执行后修订（铁律#1 中性化）**：为保持核心域不含 git/GitLab 词汇，下列标识在最终代码中已重命名（本文各代码块用的是旧名，按此表读）：
+> `WorkspaceMode.WORKTREE/CLONE → REUSE/FETCH`（CREATE 不变）；
+> `WorkspaceHandle.worktree_path/branch → location/label`；
+> `ContextArtifact.worktree_path/branch → workspace_location/workspace_label`；
+> `DeliveryArtifact.mr_url/branch → change_request_url/label`。
+> git 的 worktree/clone/mr 机制只存在于 Workspace/Delivery 的 ACL 适配器（slice 2）。
+
 ## File Structure
 
 ```

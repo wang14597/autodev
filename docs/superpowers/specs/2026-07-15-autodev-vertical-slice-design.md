@@ -126,11 +126,13 @@
 
 | 模式 | 触发场景 | 做法 |
 |------|---------|------|
-| `worktree`（默认） | 已有仓库上的改动/修复/特性 | 本地有 mirror，直接 `git worktree add` 拉带新分支的独立工作目录 |
-| `clone` | 已有仓库但本地未缓存 | 先 clone/更新到 mirror，再按 `worktree` 拉 worktree |
-| `create` | 全新项目 (greenfield) | GitLabAdapter 新建仓库 + 初始化，再拉 worktree |
+| `REUSE`（默认） | 已有仓库上的改动/修复/特性 | 本地有 mirror，ACL 直接 `git worktree add` 拉带新分支的独立工作目录 |
+| `FETCH` | 已有仓库但本地未缓存 | ACL 先 clone/更新到 mirror，再按 `REUSE` 拉 worktree |
+| `CREATE` | 全新项目 (greenfield) | ACL 新建仓库 + 初始化，再拉 worktree |
 
-- **模式在 TRIAGE 决定**：分诊判断目标仓库存不存在、是否全新项目，把 `workspace_mode` 写进 `artifacts.triage`；CONTEXT 据此准备工作区，把 `worktree_path/branch` 写进 `artifacts.context`。
+> 领域用中性模式名 `REUSE/FETCH/CREATE`（`WorkspaceMode`）；git 的 worktree/clone 机制只活在 Workspace ACL 里翻译，不进核心（铁律#1）。
+
+- **模式在 TRIAGE 决定**：分诊判断目标仓库存不存在、是否全新项目，把 `workspace_mode` 写进 `artifacts.triage`；CONTEXT 据此准备工作区，把 `workspace_location/workspace_label` 写进 `artifacts.context`。
 - 清理用 `git worktree remove` 删 worktree 和分支残留，**mirror 保留**复用。
 
 ## 7. 状态与数据流
@@ -146,14 +148,14 @@
 ```
 INTAKE     解析需求原文 → artifacts.intake = {目标, 涉及仓库, 验收线索}
 TRIAGE     判级 small_change + 定 workspace_mode → artifacts.triage = {level, confidence, workspace_mode}
-CONTEXT    按 workspace_mode 准备工作区(worktree/clone/create)，再检索
-           → artifacts.context = {worktree_path, branch, 相关文件, 摘要}
+CONTEXT    按 workspace_mode 准备工作区(REUSE/FETCH/CREATE)，再检索
+           → artifacts.context = {workspace_location, workspace_label, 相关文件, 摘要}
 DESIGN     小改动走极简方案：一句话改动说明 + 影响文件清单 → artifacts.design
 REVIEW     AI 自审方案；Gate 查是否需人审 → 需要则 WAIT_HUMAN → artifacts.review = {通过, 意见}
 IMPL       ClaudeCodeRunner 在工作区按方案改代码 + 自跑测试 → artifacts.impl = {diff, 测试结果, 摘要}
 ACCEPT     生成验收标准 (报错文案正确 + 相关测试通过 + 无回归) → artifacts.accept = {验收清单}
 VERIFY     按验收清单跑测试/lint/构建；不过则回 IMPL 重试(上限3) → artifacts.verify = {通过, 各项结果}
-SUBMIT_MR  建分支·push·开 MR，MR 描述引用需求+方案+验收结果 → artifacts.mr = {mr_url, 分支}
+SUBMIT_MR  建分支·push·开 MR，描述引用需求+方案+验收结果 → artifacts.delivery = {change_request_url, label}
 DONE       飞书通知"任务完成，MR 待合并 <链接>"(合并前留人审门禁)
 ```
 

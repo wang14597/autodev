@@ -146,7 +146,7 @@ WorkItem
 | `WorkItemId` | 标识 |
 | `TaskType` | SmallChange \| MediumFeature \| ComplexFeature（可扩展） |
 | `WorkflowState` | INTAKE, TRIAGE, CONTEXT, DESIGN, REVIEW, IMPL, ACCEPT, VERIFY, SUBMIT_MR, DONE, WAIT_HUMAN, FAILED |
-| `WorkspaceMode` | WORKTREE \| CLONE \| CREATE |
+| `WorkspaceMode` | REUSE \| FETCH \| CREATE（中性领域语义：复用本地已有 / 远端拉取 / 全新创建。git 的 worktree/clone 等机制由 Workspace ACL 翻译，不入核心） |
 | `RepoRef` | 逻辑仓库引用（名称/ID），无 GitLab 专有字段 |
 | `Requirement` | {goal, targetRepo, acceptanceHints, rawText} |
 | `Artifact` 家族 | Intake/Triage/Context/Design/Review/Impl/Acceptance/Verification/Delivery 各一型 |
