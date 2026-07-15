@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
 
 - **State Machine Engine:** Production-grade orchestration engine
-  - `Engine` with `advance` / `retry` / `rollback` / `finalize` operations, plus `run_until_quiescent` to drive a WorkItem through consecutive stages
+  - `Engine.advance()` (single public method) internally drives success / suspend / retry / rollback / fail / finalize outcomes; module-level `run_until_quiescent()` advances a WorkItem through consecutive stages until none are runnable
   - 12 workflow states with legal transitions validated
   - Retry ledger and failure categorization (transient / logic / fatal)
   - Human gate (WAIT_HUMAN) as first-class state
