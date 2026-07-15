@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from autodev.domain.ids import WorkItemId
 from autodev.domain.enums import WorkflowState, TaskType, WorkspaceMode, GatePoint
@@ -23,8 +24,15 @@ class SqliteWorkItemRepository:
             c.execute("CREATE TABLE IF NOT EXISTS work_items ("
                       "id TEXT PRIMARY KEY, state TEXT NOT NULL, data TEXT NOT NULL)")
 
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path)
+    @contextmanager
+    def _conn(self):
+        # 每次用完提交并关闭连接, 避免长跑进程句柄泄漏。
+        conn = sqlite3.connect(self._db_path)
+        try:
+            with conn:            # 事务: 成功提交, 异常回滚
+                yield conn
+        finally:
+            conn.close()          # 无论如何关闭连接
 
     def save(self, work_item: WorkItem) -> None:
         data = json.dumps(_to_dict(work_item))
