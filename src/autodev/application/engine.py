@@ -46,11 +46,7 @@ class Engine:
 
     def _on_success(self, wi: WorkItem, outcome, now: datetime) -> None:
         if outcome.artifact_key:
-            if outcome.artifact_key in wi.artifacts:
-                # 回退重跑该阶段：新产物取代回退前的旧产物（append-only 仅约束首次写入）
-                wi.artifacts[outcome.artifact_key] = outcome.artifact
-            else:
-                wi.add_artifact(outcome.artifact_key, outcome.artifact)
+            wi.add_artifact(outcome.artifact_key, outcome.artifact)
         nxt = self.transition_rules.next_state(wi.state)
         wi.transition_to(nxt, "stage ok", now)
         if nxt is S.DONE:

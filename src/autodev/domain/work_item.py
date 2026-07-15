@@ -42,7 +42,7 @@ class WorkItem:
     autonomy_dial: AutonomyDial
     type: TaskType | None = None
     state: WorkflowState = S.INTAKE
-    artifacts: dict[str, object] = field(default_factory=dict)
+    artifact_versions: dict[str, list] = field(default_factory=dict)
     history: list[StateTransition] = field(default_factory=list)
     retry_ledger: RetryLedger = field(default_factory=RetryLedger)
     cost: Cost = field(default_factory=Cost)
@@ -61,10 +61,20 @@ class WorkItem:
     def is_runnable(self) -> bool:
         return self.state not in (S.DONE, S.FAILED, S.WAIT_HUMAN)
 
+    @property
+    def artifacts(self) -> dict[str, object]:
+        """便捷只读视图：每个阶段键的最新版本产物。"""
+        return {k: v[-1] for k, v in self.artifact_versions.items()}
+
     def add_artifact(self, key: str, artifact: object) -> None:
-        if key in self.artifacts:
-            raise InvariantError(f"artifact '{key}' already exists (append-only)")
-        self.artifacts[key] = artifact
+        # 版本化 append-only：向该键的版本列表追加新版本，永不修改/删除已存版本。
+        self.artifact_versions.setdefault(key, []).append(artifact)
+
+    def current_artifact(self, key: str) -> object:
+        return self.artifact_versions[key][-1]
+
+    def versions_of(self, key: str) -> tuple:
+        return tuple(self.artifact_versions.get(key, ()))
 
     def transition_to(self, new_state: WorkflowState, reason: str, now: datetime) -> None:
         if new_state not in self.ALLOWED[self.state]:

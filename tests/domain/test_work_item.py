@@ -20,11 +20,15 @@ def test_starts_in_intake_and_runnable():
     wi = _wi()
     assert wi.state is S.INTAKE and wi.is_runnable()
 
-def test_artifacts_are_append_only():
+def test_artifacts_append_versions_without_mutating_prior():
     wi = _wi()
-    wi.add_artifact("design", DesignArtifact("x", ()))
-    with pytest.raises(InvariantError):
-        wi.add_artifact("design", DesignArtifact("y", ()))
+    a1 = DesignArtifact("x", ())
+    a2 = DesignArtifact("y", ())
+    wi.add_artifact("design", a1)
+    wi.add_artifact("design", a2)
+    assert wi.current_artifact("design") is a2
+    assert wi.versions_of("design") == (a1, a2)
+    assert wi.artifacts["design"] is a2
 
 def test_illegal_transition_rejected():
     wi = _wi()
