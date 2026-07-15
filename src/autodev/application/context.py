@@ -1,10 +1,18 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
+from autodev.domain.policies import GatePolicy, TriagePolicy
 from autodev.domain.ports import (
-    WorkspacePort, ContextPort, DesignPort, ReviewPort,
-    ExecutionPort, VerificationPort, DeliveryPort,
+    ContextPort,
+    DeliveryPort,
+    DesignPort,
+    ExecutionPort,
+    ReviewPort,
+    VerificationPort,
+    WorkspacePort,
 )
-from autodev.domain.policies import TriagePolicy, GatePolicy
+
 
 @dataclass
 class StageContext:

@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
+
 from autodev.domain.events import DomainEvent
+
 
 class InMemoryEventBus:
     def __init__(self) -> None:

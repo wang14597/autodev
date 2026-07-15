@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from autodev.domain.ids import WorkItemId
+
 from autodev.domain.enums import GatePoint
+from autodev.domain.ids import WorkItemId
 
 
 @dataclass(frozen=True)

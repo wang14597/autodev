@@ -1,12 +1,19 @@
 # tests/test_fakes.py
-from autodev.domain.value_objects import RepoRef, Requirement
+from autodev.domain.artifacts import AcceptanceArtifact
 from autodev.domain.enums import WorkspaceMode
 from autodev.domain.ids import WorkItemId
-from autodev.domain.artifacts import AcceptanceArtifact
+from autodev.domain.value_objects import RepoRef, Requirement
 from tests.fakes import (
-    FakeWorkspace, FakeContext, FakeDesign, FakeReview,
-    FakeExecution, FakeVerification, FakeDelivery, RecordingPublisher,
+    FakeContext,
+    FakeDelivery,
+    FakeDesign,
+    FakeExecution,
+    FakeReview,
+    FakeVerification,
+    FakeWorkspace,
+    RecordingPublisher,
 )
+
 
 def test_fakes_satisfy_ports():
     ws = FakeWorkspace(local=True)
@@ -24,9 +31,11 @@ def test_fakes_satisfy_ports():
     dv = FakeDelivery().submit(Requirement("g", "repo-a", (), "r"), d, h)
     assert dv.change_request_url
 
+
 def test_recording_publisher_collects():
     pub = RecordingPublisher()
     from autodev.domain.events import WorkItemCreated
+
     wid = WorkItemId.new()
     pub.publish(WorkItemCreated(wid))
     assert pub.events and pub.events[0].work_item_id == wid
