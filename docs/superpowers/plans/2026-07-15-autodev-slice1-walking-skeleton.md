@@ -610,10 +610,13 @@ git add src/autodev/domain tests/domain && git commit -m "feat(domain): 产物�
 - Consumes: `ids`、`enums`、`errors`、`value_objects`、`artifacts`。
 - Produces：
   - `StateTransition(from_state: WorkflowState, to_state: WorkflowState, reason: str, at: datetime)` frozen。
-  - `WorkItem` 聚合（可变 dataclass），字段：`id: WorkItemId`、`repo_ref: RepoRef`、`requirement: Requirement`、`autonomy_dial: AutonomyDial`、`type: TaskType | None = None`、`state: WorkflowState = INTAKE`、`artifacts: dict[str, object]`、`history: list[StateTransition]`、`retry_ledger: RetryLedger`、`cost: Cost`、`pending_gate: GatePoint | None = None`、`created_at/updated_at: datetime`。
+  - `WorkItem` 聚合（可变 dataclass），字段：`id: WorkItemId`、`repo_ref: RepoRef`、`requirement: Requirement`、`autonomy_dial: AutonomyDial`、`type: TaskType | None = None`、`state: WorkflowState = INTAKE`、`artifact_versions: dict[str, list[object]]`（按阶段键的版本列表，只追加不改）、`history: list[StateTransition]`、`retry_ledger: RetryLedger`、`cost: Cost`、`pending_gate: GatePoint | None = None`、`created_at/updated_at: datetime`。
   - 类方法 `WorkItem.create(id, repo_ref, requirement, autonomy_dial, now) -> WorkItem`。
   - 方法：
-    - `add_artifact(key: str, artifact: object) -> None`（重复 key 抛 `InvariantError`）
+    - `add_artifact(key: str, artifact: object) -> None`（向该键版本列表**追加**新版本；永不修改/删除已存版本；重复 key 不再抛错）
+    - `current_artifact(key: str) -> object`（该键最新版本；缺失抛 `KeyError`）
+    - `versions_of(key: str) -> tuple`（该键全部版本，按加入顺序）
+    - property `artifacts -> dict[str, object]`（便捷只读视图：每键最新版本；供 `wi.artifacts["context"]`、`"triage" in wi.artifacts` 等读取）
     - `transition_to(new_state: WorkflowState, reason: str, now: datetime) -> None`（非法转移抛 `InvariantError`）
     - `suspend(gate_point: GatePoint, reason: str, now: datetime) -> None`
     - `resume_to(target: WorkflowState, reason: str, now: datetime) -> None`（仅当 state==WAIT_HUMAN）
@@ -648,11 +651,15 @@ def test_starts_in_intake_and_runnable():
     wi = _wi()
     assert wi.state is S.INTAKE and wi.is_runnable()
 
-def test_artifacts_are_append_only():
+def test_artifacts_append_versions_without_mutating_prior():
     wi = _wi()
-    wi.add_artifact("design", DesignArtifact("x", ()))
-    with pytest.raises(InvariantError):
-        wi.add_artifact("design", DesignArtifact("y", ()))
+    a1 = DesignArtifact("x", ())
+    a2 = DesignArtifact("y", ())
+    wi.add_artifact("design", a1)
+    wi.add_artifact("design", a2)          # 回退重跑：追加新版本, 不覆盖
+    assert wi.current_artifact("design") is a2      # 当前 = 最新版本
+    assert wi.versions_of("design") == (a1, a2)     # 两个版本都在, 顺序保留
+    assert wi.artifacts["design"] is a2             # 便捷视图取最新
 
 def test_illegal_transition_rejected():
     wi = _wi()
@@ -733,7 +740,7 @@ class WorkItem:
     autonomy_dial: AutonomyDial
     type: TaskType | None = None
     state: WorkflowState = S.INTAKE
-    artifacts: dict[str, object] = field(default_factory=dict)
+    artifact_versions: dict[str, list] = field(default_factory=dict)
     history: list[StateTransition] = field(default_factory=list)
     retry_ledger: RetryLedger = field(default_factory=RetryLedger)
     cost: Cost = field(default_factory=Cost)
@@ -752,10 +759,21 @@ class WorkItem:
     def is_runnable(self) -> bool:
         return self.state not in (S.DONE, S.FAILED, S.WAIT_HUMAN)
 
+    @property
+    def artifacts(self) -> dict[str, object]:
+        """便捷只读视图：每个阶段键的最新版本产物。"""
+        return {k: v[-1] for k, v in self.artifact_versions.items()}
+
     def add_artifact(self, key: str, artifact: object) -> None:
-        if key in self.artifacts:
-            raise InvariantError(f"artifact '{key}' already exists (append-only)")
-        self.artifacts[key] = artifact
+        # 版本化 append-only：向该键的版本列表追加新版本，永不修改/删除已存版本。
+        # 回退重跑（VERIFY→IMPL、REVIEW→DESIGN）会为同一键追加新版本，形成审计轨迹。
+        self.artifact_versions.setdefault(key, []).append(artifact)
+
+    def current_artifact(self, key: str) -> object:
+        return self.artifact_versions[key][-1]
+
+    def versions_of(self, key: str) -> tuple:
+        return tuple(self.artifact_versions.get(key, ()))
 
     def transition_to(self, new_state: WorkflowState, reason: str, now: datetime) -> None:
         if new_state not in self.ALLOWED[self.state]:
@@ -2015,7 +2033,8 @@ def _to_dict(wi: WorkItem) -> dict:
         "autonomy_dial": [[t.name, r, g.name] for (t, r, g) in wi.autonomy_dial.auto_gates],
         "type": wi.type.name if wi.type else None,
         "state": wi.state.name,
-        "artifacts": {k: _artifact_to_dict(v) for k, v in wi.artifacts.items()},
+        "artifact_versions": {k: [_artifact_to_dict(a) for a in versions]
+                              for k, versions in wi.artifact_versions.items()},
         "history": [[h.from_state.name, h.to_state.name, h.reason, h.at.isoformat()]
                     for h in wi.history],
         "retry_ledger": list(wi.retry_ledger.counts),
@@ -2036,7 +2055,8 @@ def _from_dict(d: dict) -> WorkItem:
             (TaskType[t], r, GatePoint[g]) for (t, r, g) in d["autonomy_dial"])),
         type=TaskType[d["type"]] if d["type"] else None,
         state=WorkflowState[d["state"]],
-        artifacts={k: _artifact_from_dict(v) for k, v in d["artifacts"].items()},
+        artifact_versions={k: [_artifact_from_dict(a) for a in versions]
+                           for k, versions in d["artifact_versions"].items()},
         history=[StateTransition(WorkflowState[a], WorkflowState[b], reason,
                                  datetime.fromisoformat(at)) for (a, b, reason, at) in d["history"]],
         retry_ledger=RetryLedger(frozenset(tuple(x) for x in d["retry_ledger"])),
