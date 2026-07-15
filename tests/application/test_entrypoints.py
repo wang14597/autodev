@@ -2,7 +2,7 @@ from datetime import datetime
 from autodev.domain.ids import WorkItemId
 from autodev.domain.enums import WorkflowState as S, TaskType, GatePoint
 from autodev.domain.value_objects import RepoRef, Requirement, AutonomyDial
-from autodev.domain.events import WorkItemCreated, WorkItemCompleted
+from autodev.domain.events import WorkItemCreated, WorkItemCompleted, WorkItemFailed
 from autodev.domain.policies import TriagePolicy, GatePolicy
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine, run_until_quiescent
@@ -46,6 +46,7 @@ def test_resume_at_merge_gate_completes():
 
 def test_resume_denied_fails():
     repo, bus = InMemoryWorkItemRepository(), InMemoryEventBus()
+    seen = []; bus.subscribe(seen.append)
     dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))
     eng = _engine(repo, bus)
     wi = create_work_item(repo, bus, work_item_id=WorkItemId.new(), repo_ref=RepoRef("repo-a"),
@@ -54,3 +55,4 @@ def test_resume_denied_fails():
     run_until_quiescent(repo, eng)
     resume_work_item(wi.id, False, repo, eng, NOW)
     assert repo.get(wi.id).state is S.FAILED
+    assert any(isinstance(e, WorkItemFailed) for e in seen)
