@@ -1960,6 +1960,37 @@ def test_save_is_upsert(tmp_path):
     wi = _wi(); repo.save(wi)
     wi.transition_to(S.CONTEXT, "next", NOW); repo.save(wi)
     assert repo.get(wi.id).state is S.CONTEXT
+
+def test_full_roundtrip_fidelity(tmp_path):
+    from autodev.domain.enums import GatePoint
+    from autodev.domain.value_objects import AutonomyDial, Cost
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))
+    wi = WorkItem.create(WorkItemId.new(), RepoRef("repo-a"),
+                         Requirement("fix typo", "repo-a", ("hint-x",), "raw text"), dial, NOW)
+    wi.type = TaskType.SMALL_CHANGE
+    # 多版本产物（回退重跑场景）: 同一键两个版本
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.CLONE))
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.WORKTREE))
+    wi.transition_to(S.TRIAGE, "ok", NOW)
+    wi.record_retry("VERIFY:logic")
+    wi.add_cost(123)
+    repo.save(wi)
+    got = repo.get(wi.id)
+    # 全字段保真
+    assert got.repo_ref == RepoRef("repo-a")
+    assert got.requirement.acceptance_hints == ("hint-x",)
+    assert got.autonomy_dial == dial
+    assert got.retry_ledger.count("VERIFY:logic") == 1
+    assert got.cost == Cost(123)
+    assert got.created_at == NOW and got.updated_at is not None
+    assert got.history and got.history[-1].to_state is S.TRIAGE
+    # 多版本历史完整保留, 顺序不变
+    versions = got.versions_of("triage")
+    assert len(versions) == 2
+    assert versions[0].workspace_mode is WorkspaceMode.CLONE
+    assert versions[1].workspace_mode is WorkspaceMode.WORKTREE
+    assert got.artifacts["triage"].workspace_mode is WorkspaceMode.WORKTREE  # 当前=最新
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -1974,6 +2005,7 @@ Expected: FAIL。
 from __future__ import annotations
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from autodev.domain.ids import WorkItemId
 from autodev.domain.enums import WorkflowState, TaskType, WorkspaceMode, GatePoint
@@ -1995,8 +2027,15 @@ class SqliteWorkItemRepository:
             c.execute("CREATE TABLE IF NOT EXISTS work_items ("
                       "id TEXT PRIMARY KEY, state TEXT NOT NULL, data TEXT NOT NULL)")
 
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path)
+    @contextmanager
+    def _conn(self):
+        # 每次用完提交并关闭连接, 避免长跑进程句柄泄漏。
+        conn = sqlite3.connect(self._db_path)
+        try:
+            with conn:            # 事务: 成功提交, 异常回滚
+                yield conn
+        finally:
+            conn.close()          # 无论如何关闭连接
 
     def save(self, work_item: WorkItem) -> None:
         data = json.dumps(_to_dict(work_item))
