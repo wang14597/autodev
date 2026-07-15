@@ -1,8 +1,0 @@
-pyproject.toml
-src/autodev/__init__.py
-src/autodev.egg-info/PKG-INFO
-src/autodev.egg-info/SOURCES.txt
-src/autodev.egg-info/dependency_links.txt
-src/autodev.egg-info/requires.txt
-src/autodev.egg-info/top_level.txt
-tests/test_sanity.py
