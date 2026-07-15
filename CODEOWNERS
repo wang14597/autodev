@@ -1,0 +1,38 @@
+# AutoDev Code Owners
+
+# This file defines who is responsible for code reviews in different parts of the codebase.
+# For more information, see: https://docs.gitlab.com/ee/user/project/code_owners.html
+
+# Default owners for all code
+# 待填: Replace '@your-team' with the actual GitLab group/user(s) responsible for this project
+* @your-team
+
+# Domain layer (core architecture) — requires domain expertise
+# 待填: Consider assigning to architect or lead engineer
+src/autodev/domain/ @your-team
+
+# Application layer (handlers, orchestration)
+# 待填: Consider assigning to lead engineer or handler specialists
+src/autodev/application/ @your-team
+
+# Adapter layers (external integrations)
+# 待填: Consider assigning per adapter (workspace, execution, verification, delivery, collaboration)
+src/autodev/adapters/ @your-team
+
+# Port interfaces
+src/autodev/ports/ @your-team
+
+# Tests
+tests/ @your-team
+
+# Governance & collaboration files
+CONTRIBUTING.md @your-team
+SECURITY.md @your-team
+CHANGELOG.md @your-team
+.gitlab/merge_request_templates/ @your-team
+
+# Documentation
+docs/ @your-team
+
+# Configuration
+pyproject.toml @your-team

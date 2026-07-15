@@ -1,0 +1,13 @@
+Copyright (c) 2026. Proprietary — internal use only. All rights reserved.
+
+This software and associated documentation files (the "Software") are proprietary
+and confidential. Unauthorized copying, distribution, modification, or use of the
+Software is strictly prohibited without explicit written consent from the copyright holder.
+
+---
+
+NOTE: If this project is ever externalized or released as open-source, this file
+should be replaced with an appropriate open-source license (e.g., Apache 2.0, MIT).
+The license choice and migration process should be documented in an ADR.
+
+For now, this project is internal-use only.
