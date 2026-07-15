@@ -65,6 +65,7 @@ autodev/
 
 **Files:**
 - Create: `autodev/pyproject.toml`
+- Create: `autodev/.gitignore`
 - Create: `autodev/src/autodev/__init__.py`
 - Create: `autodev/tests/__init__.py`
 - Test: `autodev/tests/test_sanity.py`
@@ -95,9 +96,18 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 ```
 
-- [ ] **Step 2: 建空包文件**
+- [ ] **Step 2: 建空包文件 + .gitignore**
 
 `src/autodev/__init__.py` 与 `tests/__init__.py` 均为空文件。
+
+`.gitignore`：
+```gitignore
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.sqlite
+```
 
 - [ ] **Step 3: 写 sanity 测试**
 
@@ -112,14 +122,14 @@ def test_package_importable():
 
 Run:
 ```bash
-cd autodev && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest -q
+cd autodev && python3 -m venv venv && . venv/bin/activate && pip install -e '.[dev]' && pytest -q
 ```
 Expected: `1 passed`。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml src tests && git commit -m "chore: 项目脚手架 + pytest"
+git add pyproject.toml .gitignore src tests && git commit -m "chore: 项目脚手架 + pytest"
 ```
 
 ---
