@@ -35,16 +35,16 @@ def test_triage_sets_type_and_mode():
     out = handle_triage(wi, _ctx(FakeWorkspace(local=True)), NOW)
     assert out.kind == "success" and out.artifact_key == "triage"
     assert wi.type is TaskType.SMALL_CHANGE
-    assert out.artifact.workspace_mode is WorkspaceMode.WORKTREE
+    assert out.artifact.workspace_mode is WorkspaceMode.REUSE
 
 def test_context_provisions_workspace():
     from autodev.domain.artifacts import TriageArtifact
     wi = _wi()
     wi.type = TaskType.SMALL_CHANGE
-    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.WORKTREE))
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE))
     out = handle_context(wi, _ctx(), NOW)
     assert out.kind == "success" and out.artifact_key == "context"
-    assert out.artifact.branch.startswith("autodev/")
+    assert out.artifact.workspace_label.startswith("autodev/")
 
 def test_design_reads_context():
     wi = _wi()

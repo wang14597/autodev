@@ -73,7 +73,7 @@ def test_submit_mr_suspends_at_merge_gate():
     ctx, dial = _ctx()
     out = handle_submit_mr(_wi(dial), ctx, NOW)
     assert out.kind == "suspend" and out.gate_point is GatePoint.MERGE_GATE
-    assert out.artifact.mr_url
+    assert out.artifact.change_request_url
 
 def test_handlers_registry_covers_all_active_states():
     assert set(HANDLERS.keys()) == {

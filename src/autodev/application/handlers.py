@@ -79,7 +79,7 @@ def handle_submit_mr(work_item: WorkItem, ctx: StageContext, now: datetime) -> S
 
 def _handle_from_context(context):
     from autodev.domain.value_objects import WorkspaceHandle
-    return WorkspaceHandle(context.worktree_path, context.branch)
+    return WorkspaceHandle(context.workspace_location, context.workspace_label)
 
 HANDLERS: dict[WorkflowState, Callable] = {
     WorkflowState.INTAKE: handle_intake,

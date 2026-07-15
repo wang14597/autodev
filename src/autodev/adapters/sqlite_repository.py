@@ -109,7 +109,7 @@ def _artifact_to_dict(a: object) -> dict:
         return {"__t": t, "level": a.level.name, "confidence": a.confidence,
                 "workspace_mode": a.workspace_mode.name}
     if isinstance(a, ContextArtifact):
-        return {"__t": t, "worktree_path": a.worktree_path, "branch": a.branch,
+        return {"__t": t, "workspace_location": a.workspace_location, "workspace_label": a.workspace_label,
                 "relevant_files": list(a.relevant_files), "summary": a.summary}
     if isinstance(a, DesignArtifact):
         return {"__t": t, "change_summary": a.change_summary, "target_files": list(a.target_files)}
@@ -123,7 +123,7 @@ def _artifact_to_dict(a: object) -> dict:
         return {"__t": t, "passed": a.verdict.passed, "reasons": list(a.verdict.reasons),
                 "details": list(a.details)}
     if isinstance(a, DeliveryArtifact):
-        return {"__t": t, "mr_url": a.mr_url, "branch": a.branch}
+        return {"__t": t, "change_request_url": a.change_request_url, "label": a.label}
     raise TypeError(f"unknown artifact type {t}")
 
 def _artifact_from_dict(d: dict) -> object:
@@ -131,7 +131,7 @@ def _artifact_from_dict(d: dict) -> object:
     if t == "TriageArtifact":
         return TriageArtifact(TaskType[d["level"]], d["confidence"], WorkspaceMode[d["workspace_mode"]])
     if t == "ContextArtifact":
-        return ContextArtifact(d["worktree_path"], d["branch"], tuple(d["relevant_files"]), d["summary"])
+        return ContextArtifact(d["workspace_location"], d["workspace_label"], tuple(d["relevant_files"]), d["summary"])
     if t == "DesignArtifact":
         return DesignArtifact(d["change_summary"], tuple(d["target_files"]))
     if t == "ReviewArtifact":
@@ -143,5 +143,5 @@ def _artifact_from_dict(d: dict) -> object:
     if t == "VerificationArtifact":
         return VerificationArtifact(Verdict(d["passed"], tuple(d["reasons"])), tuple(d["details"]))
     if t == "DeliveryArtifact":
-        return DeliveryArtifact(d["mr_url"], d["branch"])
+        return DeliveryArtifact(d["change_request_url"], d["label"])
     raise TypeError(f"unknown artifact type {t}")

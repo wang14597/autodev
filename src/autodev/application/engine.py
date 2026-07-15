@@ -74,9 +74,9 @@ class Engine:
         delivery = wi.artifacts.get("delivery")
         context = wi.artifacts.get("context")
         if context is not None:
-            self.ctx.workspace.cleanup(WorkspaceHandle(context.worktree_path, context.branch))
-        mr_url = getattr(delivery, "mr_url", "")
-        self.publisher.publish(WorkItemCompleted(wi.id, mr_url))
+            self.ctx.workspace.cleanup(WorkspaceHandle(context.workspace_location, context.workspace_label))
+        change_request_url = getattr(delivery, "change_request_url", "")
+        self.publisher.publish(WorkItemCompleted(wi.id, change_request_url))
 
 
 def _to_failure(kind: FailureKind, message: str):

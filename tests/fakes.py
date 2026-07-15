@@ -21,11 +21,11 @@ class FakeWorkspace:
                   mode: WorkspaceMode, branch: str) -> WorkspaceHandle:
         return WorkspaceHandle(f"/tmp/{repo.name}/{work_item_id.value[:8]}", branch)
     def cleanup(self, handle: WorkspaceHandle) -> None:
-        self.cleaned.append(handle.worktree_path)
+        self.cleaned.append(handle.location)
 
 class FakeContext:
     def gather(self, requirement: Requirement, handle: WorkspaceHandle) -> ContextArtifact:
-        return ContextArtifact(handle.worktree_path, handle.branch, ("app.py",), "fake context")
+        return ContextArtifact(handle.location, handle.label, ("app.py",), "fake context")
 
 class FakeDesign:
     def propose(self, requirement: Requirement, context: ContextArtifact) -> DesignArtifact:
@@ -55,7 +55,7 @@ class FakeVerification:
 class FakeDelivery:
     def submit(self, requirement: Requirement, design: DesignArtifact,
                handle: WorkspaceHandle) -> DeliveryArtifact:
-        return DeliveryArtifact(f"https://gitlab.example/mr/{handle.branch}", handle.branch)
+        return DeliveryArtifact(f"https://gitlab.example/mr/{handle.label}", handle.label)
 
 class RecordingPublisher:
     def __init__(self):

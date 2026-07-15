@@ -16,8 +16,8 @@ def _wi(dial):
 
 def test_triage_picks_workspace_mode():
     req = Requirement("g", "repo-a", (), "r")
-    assert TriagePolicy().triage(req, RepoStatus(True, True)).workspace_mode is WorkspaceMode.WORKTREE
-    assert TriagePolicy().triage(req, RepoStatus(False, True)).workspace_mode is WorkspaceMode.CLONE
+    assert TriagePolicy().triage(req, RepoStatus(True, True)).workspace_mode is WorkspaceMode.REUSE
+    assert TriagePolicy().triage(req, RepoStatus(False, True)).workspace_mode is WorkspaceMode.FETCH
     assert TriagePolicy().triage(req, RepoStatus(False, False)).workspace_mode is WorkspaceMode.CREATE
     assert TriagePolicy().triage(req, RepoStatus(True, True)).level is TaskType.SMALL_CHANGE
 

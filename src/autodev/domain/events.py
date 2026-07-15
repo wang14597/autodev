@@ -21,7 +21,7 @@ class HumanApprovalRequested(DomainEvent):
 
 @dataclass(frozen=True)
 class WorkItemCompleted(DomainEvent):
-    mr_url: str
+    change_request_url: str
 
 
 @dataclass(frozen=True)

@@ -14,5 +14,5 @@ def test_enum_members_present():
         "INTAKE", "TRIAGE", "CONTEXT", "DESIGN", "REVIEW", "IMPL",
         "ACCEPT", "VERIFY", "SUBMIT_MR", "DONE", "WAIT_HUMAN", "FAILED",
     }
-    assert TaskType.SMALL_CHANGE and WorkspaceMode.WORKTREE
+    assert TaskType.SMALL_CHANGE and WorkspaceMode.REUSE
     assert GatePoint.REVIEW_GATE and FailureKind.TRANSIENT

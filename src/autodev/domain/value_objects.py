@@ -33,8 +33,8 @@ class RepoStatus:
 
 @dataclass(frozen=True)
 class WorkspaceHandle:
-    worktree_path: str
-    branch: str
+    location: str
+    label: str
 
 @dataclass(frozen=True)
 class Cost:

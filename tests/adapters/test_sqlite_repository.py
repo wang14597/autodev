@@ -13,7 +13,7 @@ def _wi():
                          Requirement("fix typo", "repo-a", ("hint",), "raw"),
                          AutonomyDial.all_human(), NOW)
     wi.type = TaskType.SMALL_CHANGE
-    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.WORKTREE))
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE))
     wi.transition_to(S.TRIAGE, "ok", NOW)
     return wi
 
@@ -23,7 +23,7 @@ def test_save_and_get_roundtrip(tmp_path):
     got = repo.get(wi.id)
     assert got.id == wi.id and got.state is S.TRIAGE and got.type is TaskType.SMALL_CHANGE
     assert got.requirement.goal == "fix typo"
-    assert got.artifacts["triage"].workspace_mode is WorkspaceMode.WORKTREE
+    assert got.artifacts["triage"].workspace_mode is WorkspaceMode.REUSE
 
 def test_claim_runnable_excludes_terminal(tmp_path):
     repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
@@ -46,8 +46,8 @@ def test_full_roundtrip_fidelity(tmp_path):
     wi = WorkItem.create(WorkItemId.new(), RepoRef("repo-a"),
                          Requirement("fix typo", "repo-a", ("hint-x",), "raw text"), dial, NOW)
     wi.type = TaskType.SMALL_CHANGE
-    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.CLONE))
-    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.WORKTREE))
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.FETCH))
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE))
     wi.transition_to(S.TRIAGE, "ok", NOW)
     wi.record_retry("VERIFY:logic")
     wi.add_cost(123)
@@ -62,6 +62,6 @@ def test_full_roundtrip_fidelity(tmp_path):
     assert got.history and got.history[-1].to_state is S.TRIAGE
     versions = got.versions_of("triage")
     assert len(versions) == 2
-    assert versions[0].workspace_mode is WorkspaceMode.CLONE
-    assert versions[1].workspace_mode is WorkspaceMode.WORKTREE
-    assert got.artifacts["triage"].workspace_mode is WorkspaceMode.WORKTREE
+    assert versions[0].workspace_mode is WorkspaceMode.FETCH
+    assert versions[1].workspace_mode is WorkspaceMode.REUSE
+    assert got.artifacts["triage"].workspace_mode is WorkspaceMode.REUSE

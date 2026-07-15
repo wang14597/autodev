@@ -20,8 +20,8 @@ class WorkflowState(Enum):
     FAILED = auto()
 
 class WorkspaceMode(Enum):
-    WORKTREE = auto()
-    CLONE = auto()
+    REUSE = auto()
+    FETCH = auto()
     CREATE = auto()
 
 class GatePoint(Enum):

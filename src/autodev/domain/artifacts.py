@@ -13,8 +13,8 @@ class TriageArtifact:
 
 @dataclass(frozen=True)
 class ContextArtifact:
-    worktree_path: str
-    branch: str
+    workspace_location: str
+    workspace_label: str
     relevant_files: tuple[str, ...]
     summary: str
 
@@ -51,5 +51,5 @@ class VerificationArtifact:
 
 @dataclass(frozen=True)
 class DeliveryArtifact:
-    mr_url: str
-    branch: str
+    change_request_url: str
+    label: str

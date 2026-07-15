@@ -12,8 +12,8 @@ def test_fakes_satisfy_ports():
     ws = FakeWorkspace(local=True)
     st = ws.repo_status(RepoRef("repo-a"))
     assert st.exists_local
-    h = ws.provision(WorkItemId.new(), RepoRef("repo-a"), WorkspaceMode.WORKTREE, "br")
-    assert h.branch == "br"
+    h = ws.provision(WorkItemId.new(), RepoRef("repo-a"), WorkspaceMode.REUSE, "br")
+    assert h.label == "br"
     ctx = FakeContext().gather(Requirement("g", "repo-a", (), "r"), h)
     d = FakeDesign().propose(Requirement("g", "repo-a", (), "r"), ctx)
     assert FakeReview(approved=True).review(d, ctx).approved
@@ -22,7 +22,7 @@ def test_fakes_satisfy_ports():
     ver = FakeVerification(passed=True).verify(AcceptanceArtifact(("c",)), h)
     assert ver.verdict.passed
     dv = FakeDelivery().submit(Requirement("g", "repo-a", (), "r"), d, h)
-    assert dv.mr_url
+    assert dv.change_request_url
 
 def test_recording_publisher_collects():
     pub = RecordingPublisher()

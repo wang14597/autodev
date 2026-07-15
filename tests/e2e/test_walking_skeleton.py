@@ -31,7 +31,7 @@ def test_end_to_end_with_merge_gate(tmp_path, make_engine):
     resume_work_item(wi.id, True, repo, eng, FIXED_NOW)
     done = repo.get(wi.id)
     assert done.state is S.DONE
-    assert done.artifacts["delivery"].mr_url
+    assert done.artifacts["delivery"].change_request_url
     assert any(isinstance(e, WorkItemCompleted) for e in seen)
 
 def test_end_to_end_fully_autonomous(tmp_path, make_engine):

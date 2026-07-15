@@ -11,9 +11,9 @@ from autodev.domain.work_item import WorkItem
 class TriagePolicy:
     def triage(self, requirement: Requirement, status: RepoStatus) -> TriageArtifact:
         if status.exists_local:
-            mode = WorkspaceMode.WORKTREE
+            mode = WorkspaceMode.REUSE
         elif status.exists_remote:
-            mode = WorkspaceMode.CLONE
+            mode = WorkspaceMode.FETCH
         else:
             mode = WorkspaceMode.CREATE
         return TriageArtifact(level=TaskType.SMALL_CHANGE, confidence=0.9, workspace_mode=mode)
