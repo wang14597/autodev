@@ -107,7 +107,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.sqlite
+*.egg-info/
 ```
+（`*.egg-info/` 是 `pip install -e` 生成的构建元数据，不入库。）
 
 - [ ] **Step 3: 写 sanity 测试**
 
