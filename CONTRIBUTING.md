@@ -72,6 +72,8 @@ autodev/
 
 ### Core Domain Rules (铁律 / Hard Rules)
 
+以下是 7 条职责铁律中最常触及、面向贡献者的子集；完整 7 条见 `docs/architecture/2026-07-15-strategic-direction-and-domain-model.md` 第 2 节。
+
 These are non-negotiable constraints enforced in all code reviews:
 
 #### Rule 1: Core Domain Purity (核心域纯净)
