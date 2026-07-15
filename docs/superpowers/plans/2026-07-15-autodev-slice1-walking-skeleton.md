@@ -984,6 +984,7 @@ git add src/autodev/domain tests/domain && git commit -m "feat(domain): 分诊/�
 from autodev.domain.value_objects import RepoRef, Requirement
 from autodev.domain.enums import WorkspaceMode
 from autodev.domain.ids import WorkItemId
+from autodev.domain.artifacts import AcceptanceArtifact
 from tests.fakes import (
     FakeWorkspace, FakeContext, FakeDesign, FakeReview,
     FakeExecution, FakeVerification, FakeDelivery, RecordingPublisher,
@@ -1000,7 +1001,8 @@ def test_fakes_satisfy_ports():
     assert FakeReview(approved=True).review(d, ctx).approved
     impl = FakeExecution(test_passed=True).implement(d, h)
     assert impl.test_passed
-    ver = FakeVerification(passed=True).verify.__self__  # 存在即可
+    ver = FakeVerification(passed=True).verify(AcceptanceArtifact(("c",)), h)
+    assert ver.verdict.passed
     dv = FakeDelivery().submit(Requirement("g", "repo-a", (), "r"), d, h)
     assert dv.mr_url
 
@@ -1137,8 +1139,6 @@ class RecordingPublisher:
         self.events.append(event)
 ```
 
-> 注：`tests/test_fakes.py` 里 `FakeVerification` 那行仅验证方法存在，实际断言在后续任务使用；如觉多余可精简为 `assert FakeVerification(passed=True).verify(AcceptanceArtifact(()), h).verdict.passed`（需 import `AcceptanceArtifact`）。
-
 - [ ] **Step 5: 跑测试确认通过并 commit**
 
 Run: `pytest tests/test_fakes.py -q`
@@ -1209,11 +1209,9 @@ def test_triage_sets_type_and_mode():
     assert out.artifact.workspace_mode is WorkspaceMode.WORKTREE
 
 def test_context_provisions_workspace():
+    from autodev.domain.artifacts import TriageArtifact
     wi = _wi()
     wi.type = TaskType.SMALL_CHANGE
-    wi.add_artifact("triage", handle_triage.__wrapped__ if hasattr(handle_triage, "__wrapped__") else None) if False else None
-    # 直接构造 triage 产物
-    from autodev.domain.artifacts import TriageArtifact
     wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.WORKTREE))
     out = handle_context(wi, _ctx(), NOW)
     assert out.kind == "success" and out.artifact_key == "context"
