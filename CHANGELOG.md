@@ -9,65 +9,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned
-- Linter integration (`ruff`) — Task B5
-- Type checker integration (`mypy`) — Task B5
-- GitLab MR auto-merge guards — Task C2
-- Lark approval workflow integration — Task C3
-- SQLite persistence layer upgrades — Task C4
+### Planned (Slice 2 / 后续)
+- Slice 2: replace the 7 fakes-only ports (Workspace, Context, Design, Review, Execution, Verification, Delivery) with real ACL adapters + end-to-end smoke test
+- GitLab MR auto-merge guards (Slice 4: trust-gradient auto-merge)
+- Lark/Feishu approval workflow integration (Slice 2 Collaboration bounded context)
+- Execution sandbox for Claude Code headless sessions (Slice 3)
+- Prompt-injection guards for user-supplied Requirement/Context content (Slice 2/3, see Security cross-cutting concern in ROADMAP)
+
+---
+
+## [0.1.1] - 2026-07-16
+
+### Added
+- **Project baseline (no runtime change):** Professional project assets decoupled from feature work
+  - `README.md` + `ROADMAP.md`: project face, architecture overview, current status, roadmap across all 4 slices
+  - `docs/architecture/diagrams.md`: 5 Mermaid diagrams (system context, bounded contexts, state machine, sequence, data model)
+  - `docs/adr/`: ADR 0001 (lightweight state machine), ADR 0002 (versioned artifacts), ADR 0003 (domain vocabulary neutralization), plus `0000-template.md` and `README.md` index
+  - Governance files: `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `CHANGELOG.md`, `.gitlab/merge_request_templates/default.md`, `CODEOWNERS`
+  - Quality gates: `ruff` + `mypy` configuration in `pyproject.toml`, `.pre-commit-config.yaml`, `.gitlab-ci.yml`
+  - Non-behavioral formatting/annotation pass across the existing codebase (no logic changes)
+
+### Changed
+- None (documentation/tooling only; all 48 tests and runtime behavior unchanged from 0.1.0).
+
+### Related Documentation
+- Project Baseline Plan: `docs/superpowers/plans/2026-07-15-project-baseline.md`
+- ADR Index: `docs/adr/README.md`
+- Architecture Diagrams: `docs/architecture/diagrams.md`
 
 ---
 
 ## [0.1.0] - 2026-07-15
 
 ### Added
-- **Domain Model (Task B1):** Complete DDD architecture with WorkItem aggregate root, state machine, and 7 hard rules (铁律)
+- **Domain Model:** Complete DDD architecture with WorkItem aggregate root, state machine, and 7 hard rules (铁律)
   - WorkItem lifecycle: INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERIFY → SUBMIT_MR → DONE
-  - 9 value objects (WorkItemId, TaskType, WorkflowState, Artifact, Verdict, FailureKind, etc.)
-  - 4 domain services (TriagePolicy, GatePolicy, TransitionRules, RetryPolicy)
+  - Value objects: RepoRef, Requirement, Verdict, GateDecision, RepoStatus, WorkspaceHandle, Cost, RetryLedger, AutonomyDial
+  - Enums: TaskType, WorkflowState (12 states), WorkspaceMode, GatePoint, FailureKind
+  - 8 versioned artifact types (TriageArtifact, ContextArtifact, DesignArtifact, ReviewArtifact, ImplArtifact, AcceptanceArtifact, VerificationArtifact, DeliveryArtifact)
   - 4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
-  - Anti-Corruption Layer (ACL) port interfaces for workspace, execution, verification, delivery, collaboration
+  - 4 domain services (TriagePolicy, GatePolicy, TransitionRules, RetryPolicy)
+  - 9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
 
-- **State Machine Engine (Task B2):** Production-grade state machine implementation
+- **State Machine Engine:** Production-grade orchestration engine
+  - `Engine` with `advance` / `retry` / `rollback` / `finalize` operations, plus `run_until_quiescent` to drive a WorkItem through consecutive stages
   - 12 workflow states with legal transitions validated
   - Retry ledger and failure categorization (transient / logic / fatal)
   - Human gate (WAIT_HUMAN) as first-class state
   - Artifact versioning (append-only semantics)
   - Event publishing on every state transition
-  - Backward-compatible upgrade path for future rule refinements
 
-- **9 Stage Handlers (Task B3):** Application-layer orchestration
-  - IntakeHandler, TriageHandler, ContextGatheringHandler, DesignProposalHandler, ReviewHandler
-  - ImplementationHandler, AcceptanceHandler, VerificationHandler, DeliveryHandler
-  - Handler contract: (WorkItem, context) → StageOutcome
+- **9 Stage Handler Functions:** Application-layer orchestration in `src/autodev/application/handlers.py`
+  - `handle_intake`, `handle_triage`, `handle_context`, `handle_design`, `handle_review`, `handle_impl`, `handle_accept`, `handle_verify`, `handle_submit_mr`
+  - Handler contract: `(work_item, ctx, now) -> StageOutcome`
   - Failure mapping to domain FailureKind
-  - Port coordination (e.g., ContextGatheringHandler calls ContextPort)
+  - Port coordination (e.g., `handle_context` calls `ContextPort`)
 
-- **Persistence & Event Bus (Task B3):** Repository and event infrastructure
-  - SQLite-backed WorkItemRepository with save/load/fetch-pending operations
-  - In-memory event bus with publish/subscribe for domain events
+- **Persistence & Event Bus:** Repository and event infrastructure
+  - `SqliteWorkItemRepository`: SQLite-backed persistence (save/load/fetch-pending)
+  - `InMemoryWorkItemRepository`: in-memory implementation for tests
+  - `InMemoryEventBus`: publish/subscribe event bus for domain events
   - Artifact versioning storage (append-only lists per stage key)
   - Audit trail via StateTransition history
 
-- **Test Suite (Task B3):** 48 comprehensive tests
+- **Test Suite:** 48 tests (unit + end-to-end walking skeleton)
   - Domain model tests (WorkItem invariants, state transitions, artifact versioning)
-  - Handler tests (each stage with mocked ports)
-  - State machine tests (all transitions, retry limits, failure routing)
+  - Handler tests (each stage with fake ports)
+  - State machine / engine tests (all transitions, retry limits, failure routing)
   - Repository tests (persistence, event replay)
-  - Minimum 80% coverage for domain/application layers
-
-- **Governance & Collaboration Files (Task B4):**
-  - `CONTRIBUTING.md`: Development setup, Conventional Commits, branch strategy, hard rules checklist
-  - `SECURITY.md`: Threat model for autonomous code-writing agent; planned mitigations for execution sandbox, prompt injection, token privilege, auto-merge guards
-  - `LICENSE`: Proprietary internal notice with externalization path
-  - `CHANGELOG.md` (this file)
-  - `.gitlab/merge_request_templates/default.md`: MR checklist against 5 hard rules + test evidence
-  - `CODEOWNERS`: Placeholder for team ownership
+  - End-to-end walking-skeleton scenario tests (human-review path, full-auto path, failure path)
 
 ### Architecture Decisions
 - **DDD with Ubiquitous Language:** All code and docs use 统一语言 terms (WorkItem, DesignProposal, Artifact, Gate, etc.); 禁止 SDK-specific leakage into core domain.
-- **Hexagonal (Ports & Adapters):** Core orchestration domain defines 8 outbound ports; adapters implement them without polluting core logic.
-- **Event-Driven Collaboration:** Domain publishes events; Collaboration/Observability contexts subscribe (decoupled).
+- **Hexagonal (Ports & Adapters):** Core orchestration domain defines 9 outbound ports; adapters implement them without polluting core logic.
+- **Event-Driven Collaboration:** Domain publishes events; the Collaboration/Observability bounded contexts subscribe (decoupled) — no dedicated "CollaborationPort" exists; Collaboration is a bounded context, not a code port.
 - **Append-Only Artifacts:** All stage outputs versioned per key; no overwrites. Enables audit trail and clean rollback semantics.
 - **AutonomyDial:** Gate decisions parameterized per (taskType, repo, gatePoint) → auto | human; enables gradual automation rollout.
 
@@ -75,15 +90,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - None (first release).
 
 ### Known Limitations
-- ✋ **No execution sandboxing:** Claude Code runs in user environment (future work, Task C1).
-- ✋ **No prompt-injection guards:** User-supplied content not yet sanitized (future work, Task C1).
-- ✋ **No token rotation:** GitLab/Lark tokens static during session (future work, Task C1).
-- ✋ **Merge gate defaults to HUMAN:** Auto-merge not enabled (future work, Task C2).
-- ✋ **SQLite only:** No multi-instance support yet; suitable for single-user/team tool (future work, Task D1).
+- ✋ **7 of 9 ports are fakes-only:** WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, and DeliveryPort have no real adapters yet — only test fakes (future work, Slice 2). Only `WorkItemRepository` (SQLite/in-memory) and `EventPublisher` (in-memory) have real implementations.
+- ✋ **No execution sandboxing:** Claude Code runs in user environment (future work, Slice 3).
+- ✋ **No prompt-injection guards:** User-supplied content not yet sanitized (future work, Slice 2/3).
+- ✋ **No token rotation:** GitLab/Lark tokens static during session (future work).
+- ✋ **Merge gate defaults to HUMAN:** Auto-merge not enabled (future work, Slice 4).
+- ✋ **SQLite only:** No multi-instance support yet; suitable for single-user/team tool (future work).
 
 ### Related Documentation
 - Strategic Direction & Domain Model: `docs/architecture/2026-07-15-strategic-direction-and-domain-model.md`
 - Vertical Slice Design: `docs/superpowers/specs/2026-07-15-autodev-vertical-slice-design.md`
+- Slice 1 Plan (Tasks 1-13): `docs/superpowers/plans/2026-07-15-autodev-slice1-walking-skeleton.md`
 - Security Policy: `SECURITY.md`
 - Contributing Guide: `CONTRIBUTING.md`
 
@@ -91,4 +108,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 待填: GitLab 仓库地址（项目托管于 GitLab，非 GitHub；远程仓库 URL 待定） -->
 [Unreleased]: #
+[0.1.1]: #
 [0.1.0]: #
