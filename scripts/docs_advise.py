@@ -36,10 +36,10 @@ def _claude_runner(prompt: str) -> str:
 
 
 def main() -> int:
-    print("── 文档一致性顾问(本地, 非阻塞) ──")
     try:
+        print("── 文档一致性顾问(本地, 非阻塞) ──")
         print(advise(_claude_runner))
-    except Exception as e:  # noqa: BLE001 绝不阻塞 push
+    except Exception as e:  # noqa: BLE001 绝不阻塞 push: 连 print 失败也不挡
         print(f"文档顾问跳过(顶层兜底): {e}")
     return 0
 
