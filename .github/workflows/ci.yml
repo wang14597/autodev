@@ -23,3 +23,30 @@ jobs:
         run: mypy src
       - name: Test (pytest)
         run: pytest -q
+
+  mermaid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Render all mermaid blocks
+        run: |
+          npm i -g @mermaid-js/mermaid-cli
+          python3 - <<'PY'
+          import re, pathlib, subprocess, sys, tempfile
+          fail = []
+          for md in pathlib.Path('.').rglob('*.md'):
+              if 'venv/' in str(md): continue
+              blocks = re.findall(r'```mermaid\n(.*?)```', md.read_text(), re.S)
+              for i, b in enumerate(blocks):
+                  with tempfile.NamedTemporaryFile('w', suffix='.mmd', delete=False) as f:
+                      f.write(b); src = f.name
+                  r = subprocess.run(['mmdc','-i',src,'-o',src+'.svg'], capture_output=True, text=True)
+                  if r.returncode != 0:
+                      fail.append(f"{md} block#{i}: {r.stderr[:200]}")
+          if fail:
+              print("\n".join(fail)); sys.exit(1)
+          print("all mermaid blocks render")
+          PY

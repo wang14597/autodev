@@ -1,0 +1,11 @@
+# 非代码符号白名单（品牌/工具/概念名）
+GitHub
+GitLab
+AutoDev
+Claude
+ClaudeCode
+Python
+Mermaid
+SQLite
+DDD
+Self

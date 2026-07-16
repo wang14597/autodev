@@ -45,15 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Domain Model:** Complete DDD architecture with WorkItem aggregate root, state machine, and 7 hard rules (铁律)
   - WorkItem lifecycle: INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERIFY → SUBMIT_MR → DONE
   - Value objects: RepoRef, Requirement, Verdict, GateDecision, RepoStatus, WorkspaceHandle, Cost, RetryLedger, AutonomyDial
-  - Enums: TaskType, WorkflowState (12 states), WorkspaceMode, GatePoint, FailureKind
-  - 8 versioned artifact types (TriageArtifact, ContextArtifact, DesignArtifact, ReviewArtifact, ImplArtifact, AcceptanceArtifact, VerificationArtifact, DeliveryArtifact)
-  - 4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
+  - Enums: TaskType, WorkflowState (<!-- fact:workflow_states -->12 states), WorkspaceMode, GatePoint, FailureKind
+  - <!-- fact:artifacts -->8 versioned artifact types (TriageArtifact, ContextArtifact, DesignArtifact, ReviewArtifact, ImplArtifact, AcceptanceArtifact, VerificationArtifact, DeliveryArtifact)
+  - <!-- fact:events -->4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
   - 4 domain services (TriagePolicy, GatePolicy, TransitionRules, RetryPolicy)
-  - 9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
+  - <!-- fact:ports -->9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
 
 - **State Machine Engine:** Production-grade orchestration engine
   - `Engine.advance()` (single public method) internally drives success / suspend / retry / rollback / fail / finalize outcomes; module-level `run_until_quiescent()` advances a WorkItem through consecutive stages until none are runnable
-  - 12 workflow states with legal transitions validated
+  - <!-- fact:workflow_states -->12 workflow states with legal transitions validated
   - Retry ledger and failure categorization (transient / logic / fatal)
   - Human gate (WAIT_HUMAN) as first-class state
   - Artifact versioning (append-only semantics)
