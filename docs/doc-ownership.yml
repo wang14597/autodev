@@ -8,3 +8,5 @@ rules:
     docs: ["docs/architecture/diagrams.md", "CHANGELOG.md"]
   - paths: ["src/autodev/**"]
     docs: ["CHANGELOG.md"]
+  - paths: ["scripts/**", ".github/workflows/**"]
+    docs: ["CHANGELOG.md"]
