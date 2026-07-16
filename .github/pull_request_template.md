@@ -1,6 +1,6 @@
 ## 变更说明 (Change Description)
 
-<!-- Brief summary of what this MR changes and why. Focus on the "why" and intended impact. -->
+<!-- Brief summary of what this PR changes and why. Focus on the "why" and intended impact. -->
 
 ### 关键变更 (Key Changes)
 - 
@@ -78,13 +78,13 @@ tests/domain/test_state_machine.py::test_invalid_transition_rejected PASSED
 - [ ] Coverage report attached or visible in CI
 
 ### 手工测试 (Manual Test, if applicable)
-<!-- If this MR requires manual integration testing, document the steps and results. -->
+<!-- If this PR requires manual integration testing, document the steps and results. -->
 
 ---
 
 ## 评审门禁 (Review Gates)
 
-Before this MR can be merged:
+Before this PR can be merged:
 
 - [ ] **Code Review:** At least one approval from code owner or designated reviewer
 - [ ] **Architecture Review (if applicable):** For changes to `domain/`, `ports/`, or `adapters/` contracts
@@ -92,6 +92,8 @@ Before this MR can be merged:
 - [ ] **Hard Rules Verified:** Reviewer confirms checklist above
 - [ ] **No Merge Conflicts:** OR resolved by human review only
 - [ ] **Commit messages:** Follow Conventional Commits format
+- [ ] 已更新相关文档（README/ROADMAP/CHANGELOG/图/ADR），或注明 Docs-Impact: none — <理由>
+- [ ] CHANGELOG 已添加条目（或显式 skip）
 
 ---
 
@@ -102,4 +104,4 @@ Before this MR can be merged:
 ---
 
 **Reviewers:** @your-team (see CODEOWNERS)
-**Ready for review?** Mark this MR as "draft: false" once the above is complete.
+**Ready for review?** Mark this PR as "Ready for review" (undraft) once the above is complete.
