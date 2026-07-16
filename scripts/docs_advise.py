@@ -28,7 +28,7 @@ def _claude_runner(prompt: str) -> str:
         ["claude", "-p", prompt, "--permission-mode", "plan", "--bare"],
         capture_output=True,
         text=True,
-        timeout=180,
+        timeout=600,
     )
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or "claude 非零退出").strip()[:200])
