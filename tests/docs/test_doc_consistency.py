@@ -55,7 +55,10 @@ def _code_truth() -> dict[str, int]:
 
 
 def test_no_fabricated_code_symbols_in_docs():
-    known = known_symbols(SRC)
+    # 已知符号取自 src/autodev 与 tests(含 tests/fakes.py 的假适配器类)——
+    # 测试专用的真实符号(FakeWorkspace 等)因此被识别为真, 无需塞进白名单,
+    # 且将来被重命名时文档引用仍会被抓到。
+    known = known_symbols(SRC) | known_symbols(REPO / "tests")
     allow = load_allowlist(ALLOWLIST)
     problems = {}
     for md in _tracked_markdown():

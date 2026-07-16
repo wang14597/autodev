@@ -17,12 +17,8 @@ ResumeWorkItem
 Artifact
 Transition
 
-# tests/fakes.py 中的假适配器(测试专用, 不在 src/autodev 内)
-FakeWorkspace
-FakeContext
-FakeDesign
-FakeVerification
-FakeDelivery
+# tests/fakes.py 的假适配器(FakeWorkspace 等)不在此白名单:
+# 它们是 tests/ 内的真实类, 已由 known_symbols(REPO/"tests") 识别为真符号。
 
 # Python 内置异常(非仓库自定义符号)
 KeyError
