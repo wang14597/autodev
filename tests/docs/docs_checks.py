@@ -9,6 +9,17 @@ _CAMEL = re.compile(r"^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*$")
 _HANDLE = re.compile(r"^handle_[a-z_]+$")
 _LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 _FACT = re.compile(r"<!--\s*fact:(\w+)\s*-->\s*`?(\d+)`?")
+_FENCE = re.compile(r"```.*?```", re.S)
+
+
+def strip_code_fences(md: str) -> str:
+    """Remove fenced code blocks (```...``` incl. ```lang) from markdown text.
+
+    Example markdown/code inside fenced blocks (e.g. `[a](missing.md)` used to
+    illustrate the link checker itself) must not be scanned by the link or
+    symbol checks below, only prose and inline `` `code` `` spans should be.
+    """
+    return _FENCE.sub("", md)
 
 
 def _is_codeish(token: str) -> bool:
@@ -31,7 +42,7 @@ def known_symbols(src_root: Path) -> set[str]:
 
 def extract_code_symbols(md_text: str) -> set[str]:
     out: set[str] = set()
-    for m in _BACKTICK.finditer(md_text):
+    for m in _BACKTICK.finditer(strip_code_fences(md_text)):
         token = m.group(1).strip()
         if _is_codeish(token):
             out.add(token)
@@ -44,7 +55,7 @@ def fabricated_symbols(md_text: str, known: set[str], allow: set[str]) -> set[st
 
 def internal_links(md_path: Path, md_text: str) -> list[str]:
     out: list[str] = []
-    for m in _LINK.finditer(md_text):
+    for m in _LINK.finditer(strip_code_fences(md_text)):
         target = m.group(1).split("#")[0].strip()
         if not target or target.startswith(("http://", "https://", "mailto:")):
             continue

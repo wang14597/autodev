@@ -9,3 +9,20 @@ Mermaid
 SQLite
 DDD
 Self
+
+# 架构/规格文档中的概念性端口名（早期设计用语, 非 src/autodev 字面类名）
+CreateWorkItem
+AdvanceWorkItem
+ResumeWorkItem
+Artifact
+Transition
+
+# tests/fakes.py 中的假适配器(测试专用, 不在 src/autodev 内)
+FakeWorkspace
+FakeContext
+FakeDesign
+FakeVerification
+FakeDelivery
+
+# Python 内置异常(非仓库自定义符号)
+KeyError

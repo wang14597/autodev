@@ -155,7 +155,7 @@ def test_known_symbols_includes_class_def_and_enum_members(tmp_path):
 def test_internal_and_broken_links(tmp_path):
     (tmp_path / "exists.md").write_text("x", encoding="utf-8")
     md = tmp_path / "doc.md"
-    text = "[a]​(exists.md) [b]​(missing.md) [c]​(https://x.com) [d]​(exists.md#frag)"
+    text = "[a](exists.md) [b](missing.md) [c](https://x.com) [d](exists.md#frag)"
     md.write_text(text, encoding="utf-8")
     assert set(internal_links(md, text)) == {"exists.md", "missing.md"}
     assert broken_links(md, text) == ["missing.md"]
