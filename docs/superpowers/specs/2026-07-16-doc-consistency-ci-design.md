@@ -86,7 +86,7 @@ CI 把跳过决定回显到 PR 日志/评论，使"无需文档"成为**显式�
 改为**本地 `pre-push` 钩子**：`scripts/docs_advise.py`，经由 `.pre-commit-config.yaml` 的 `local` repo、`stages: [pre-push]` 接入。开发者执行 `git push` 时，在**本机**（已连 VPN、本地已登录 Claude Code）跑 headless `claude -p`：输入本次改动相对上游分支的 `src/**` diff，让其判断"本次改动是否使某文档过时"，以终端输出的形式给出疑似清单。
 
 - **绝不硬阻塞**：`scripts/docs_advise.py` 的 `main()` 恒返回 0；LLM 非确定性、diff 为空、runner 异常（未登录/无网络/超时）均优雅降级为提示信息，不阻止 push。
-- **环境不可用则跳过**：不在内网/未连 VPN/本地无 Claude Code 时，顾问静默跳过或打印"顾问运行失败(不阻塞)"，push 照常进行。
+- **环境不可用则跳过**：不在内网/未连 VPN/本地无 Claude Code 时，顾问打印一行非阻塞提示（如 `文档顾问跳过: <原因>(非阻塞)`）后继续，push 照常进行。
 - 一次性安装：`pre-commit install --hook-type pre-push`；也可手动运行 `python scripts/docs_advise.py`。
 - 不再依赖 `ANTHROPIC_API_KEY` repo secret（原云端方案的前提），也不产生 PR 评论——仅本机终端输出，供开发者 push 前参考。
 
