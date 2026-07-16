@@ -83,14 +83,15 @@ CI 把跳过决定回显到 PR 日志/评论，使"无需文档"成为**显式�
 
 **平台约束**：本仓库使用的 Anthropic key 仅在内网可用，GitHub 云端 runner 无法访问该 key，因此第 3 层**不能**做成 GitHub Actions job（原设计如此，已废弃，见下方"变更记录"）。
 
-改为**本地 `pre-push` 钩子**：`scripts/docs_advise.py`，经由 `.pre-commit-config.yaml` 的 `local` repo、`stages: [pre-push]` 接入。开发者执行 `git push` 时，在**本机**（已连 VPN、本地已登录 Claude Code）跑 headless `claude -p`：输入本次改动相对上游分支的 `src/**` diff，让其判断"本次改动是否使某文档过时"，以终端输出的形式给出疑似清单。
+改为**本地 `pre-push` 钩子**：`scripts/docs_advise.py`，经由 `.pre-commit-config.yaml` 的 `local` repo、`stages: [pre-push]` 接入。开发者执行 `git push` 时，在**本机**（已连 VPN、本地已登录 Claude Code）跑 headless `claude -p`，赋予其 `--permission-mode plan --bare` 权限进行只读调查。Claude Code 自主 git 查看本次将要 push 的改动（对比 `origin/main`），并阅读候选文档（README、ROADMAP、CHANGELOG、`docs/architecture/diagrams.md`、`docs/adr`），判断哪些文档可能因这些改动而过时，以终端输出的形式给出疑似清单。
 
-- **绝不硬阻塞**：`scripts/docs_advise.py` 的 `main()` 恒返回 0；LLM 非确定性、diff 为空、runner 异常（未登录/无网络/超时）均优雅降级为提示信息，不阻止 push。
+- **绝不硬阻塞**：`scripts/docs_advise.py` 的 `main()` 恒返回 0；Claude Code 的判断失败、环境异常（未登录/无网络/超时）均优雅降级为提示信息，不阻止 push。
 - **环境不可用则跳过**：不在内网/未连 VPN/本地无 Claude Code 时，顾问打印一行非阻塞提示（如 `文档顾问跳过: <原因>(非阻塞)`）后继续，push 照常进行。
 - 一次性安装：`pre-commit install --hook-type pre-push`；也可手动运行 `python scripts/docs_advise.py`。
 - 不再依赖 `ANTHROPIC_API_KEY` repo secret（原云端方案的前提），也不产生 PR 评论——仅本机终端输出，供开发者 push 前参考。
+- **简化**：脚本不再自行计算 diff，而是将调查本地仓库的完整职责交给 Claude Code 的只读代理——脚本只负责构建 prompt 和传递 Claude Code 的回复，diff 收集和文档阅读由 Claude Code 自主完成。
 
-**变更记录**：原设计（见下）为 GitHub Actions job（`pull_request` 触发）跑 headless `claude -p`、以 **PR 评论**输出疑似清单，需要 `ANTHROPIC_API_KEY` 作为 repo secret。该方案因内网 key 限制无法在云端 runner 使用，已改为上述本地钩子方案；`.github/workflows/docs-advisor.yml` 已移除。
+**变更记录**：原设计（见下）为 GitHub Actions job（`pull_request` 触发）跑 headless `claude -p`、以 **PR 评论**输出疑似清单，需要 `ANTHROPIC_API_KEY` 作为 repo secret。该方案因内网 key 限制无法在云端 runner 使用，已改为上述本地钩子方案；`.github/workflows/docs-advisor.yml` 已移除。原 0.1.2 版本中，脚本 `gather_src_diff()` 手动计算 diff 并截断 60K 字符后注入 prompt——已优化为由 Claude Code 自主调查。
 
 ## 4. 根治手段：单一真源，减少可漂移的重复
 

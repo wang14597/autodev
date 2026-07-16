@@ -1,37 +1,34 @@
 from scripts.docs_advise import advise, build_prompt
 
 
-def test_build_prompt_contains_diff_and_instructions():
-    p = build_prompt("--- a/src/x.py\n+++ b/src/x.py\n+def foo(): ...")
-    assert "def foo" in p
-    assert "README" in p and "CHANGELOG" in p
-    assert ("不要" in p) or ("只读" in p)  # 只读约束
+def test_build_prompt_names_docs_and_is_read_only():
+    p = build_prompt()
+    assert "README" in p and "CHANGELOG" in p and "docs/adr" in p
+    assert "不要修改" in p or "只读" in p
 
 
-def test_advise_empty_diff_short_circuits():
-    called = []
-    out = advise(lambda prompt: called.append(1) or "X", "")
-    assert "无 src 改动" in out or "no src" in out.lower()
-    assert not called  # diff 空时不调用模型
+def test_advise_runs_runner_and_returns_output():
+    assert advise(lambda prompt: "疑似过时: CHANGELOG") == "疑似过时: CHANGELOG"
 
 
-def test_advise_runs_runner_on_nonempty_diff():
-    out = advise(lambda prompt: "疑似过时: CHANGELOG", "some diff")
-    assert "CHANGELOG" in out
+def test_advise_passes_prompt_to_runner():
+    seen = {}
+    advise(lambda prompt: seen.setdefault("p", prompt) or "ok")
+    assert "README" in seen["p"]  # 传给 runner 的是 build_prompt()
 
 
-def test_advise_degrades_gracefully_when_runner_raises():
+def test_advise_degrades_when_runner_raises():
     def boom(prompt):
         raise RuntimeError("claude 不可用")
 
-    out = advise(boom, "some diff")
+    out = advise(boom)
     assert "跳过" in out and "claude 不可用" in out
 
 
-def test_main_always_returns_zero_even_if_gather_raises(monkeypatch):
+def test_main_always_returns_zero(monkeypatch):
     import scripts.docs_advise as m
 
     monkeypatch.setattr(
-        m, "gather_src_diff", lambda base: (_ for _ in ()).throw(RuntimeError("git 没了"))
+        m, "_claude_runner", lambda prompt: (_ for _ in ()).throw(RuntimeError("boom"))
     )
     assert m.main() == 0
