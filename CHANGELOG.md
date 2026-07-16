@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repo CI migrated from GitLab CI to **GitHub Actions** (`.github/workflows/ci.yml`); the contribution flow for this repo is now a **GitHub PR** (fork/branch → PR) instead of a GitLab MR.
 - PR template and CODEOWNERS moved to `.github/pull_request_template.md` and `.github/CODEOWNERS` respectively (`.gitlab/` and `.gitlab-ci.yml` removed).
 - Layer 3 AI docs advisor changed from a GitHub Actions workflow (`pull_request`-triggered, PR-comment output, required an `ANTHROPIC_API_KEY` repo secret) to a local `pre-push` git hook, because the Anthropic key used by this project only works on the internal network and cannot be reached from GitHub's cloud runners. `.github/workflows/docs-advisor.yml` has been removed accordingly.
+- Local doc advisor simplified to use Claude Code's agentic read-only investigation (`--permission-mode plan --bare`) instead of pre-computing a git diff; the script no longer gathers and truncates the diff in-process but instead delegates autonomous investigation of git changes and doc reading to Claude Code.
 
 ### Planned (Slice 2 / 后续)
 - Slice 2: replace the 7 fakes-only ports (Workspace, Context, Design, Review, Execution, Verification, Delivery) with real ACL adapters + end-to-end smoke test
