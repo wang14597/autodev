@@ -133,6 +133,8 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
+一次性钩子安装：`pre-commit install --hook-type pre-push`。装好之后，每次 `git push` 前会在本机自动跑一次非阻塞的文档一致性顾问（`scripts/docs_advise.py`；需已连 VPN、本地已登录 Claude Code，环境不可用时静默跳过，绝不阻塞 push）。也可随时手动跑：`python scripts/docs_advise.py`。
+
 预期输出：
 ```
 ................................................... [100%]

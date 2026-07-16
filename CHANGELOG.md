@@ -12,11 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Documentation-consistency CI: Layer 1 deterministic checks (`tests/docs/`) covering fabricated-symbol detection, internal-link resolution, and fact-count markers, plus a Mermaid diagram render/validation job.
 - Documentation-consistency CI: Layer 2 doc-impact gate — `scripts/check_doc_impact.py` evaluates changed paths against a path-to-doc mapping in `docs/doc-ownership.yml`, wired as the `doc-impact` GitHub Actions job (PR-only). An escape hatch is available via the PR label `docs:none-needed` or a `Docs-Impact: none` commit trailer.
-- Documentation-consistency CI: Layer 3 non-blocking AI docs advisor GitHub Actions workflow (`.github/workflows/docs-advisor.yml`) that comments on pull requests when docs look likely stale relative to the code change; the job skips when no `ANTHROPIC_API_KEY` is configured.
+- Documentation-consistency CI: Layer 3 non-blocking AI docs advisor, implemented as a **local `pre-push` hook** (`scripts/docs_advise.py`, wired via the `pre-commit` `pre-push` stage) that prints a short staleness-suspect list to the developer's terminal before `git push`; it degrades gracefully (never blocks the push) whenever the environment is unavailable (no VPN, no local Claude Code session, timeout, etc.).
 
 ### Changed
 - Repo CI migrated from GitLab CI to **GitHub Actions** (`.github/workflows/ci.yml`); the contribution flow for this repo is now a **GitHub PR** (fork/branch → PR) instead of a GitLab MR.
 - PR template and CODEOWNERS moved to `.github/pull_request_template.md` and `.github/CODEOWNERS` respectively (`.gitlab/` and `.gitlab-ci.yml` removed).
+- Layer 3 AI docs advisor changed from a GitHub Actions workflow (`pull_request`-triggered, PR-comment output, required an `ANTHROPIC_API_KEY` repo secret) to a local `pre-push` git hook, because the Anthropic key used by this project only works on the internal network and cannot be reached from GitHub's cloud runners. `.github/workflows/docs-advisor.yml` has been removed accordingly.
 
 ### Planned (Slice 2 / 后续)
 - Slice 2: replace the 7 fakes-only ports (Workspace, Context, Design, Review, Execution, Verification, Delivery) with real ACL adapters + end-to-end smoke test

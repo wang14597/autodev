@@ -23,6 +23,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e '.[dev]'
 ```
 
+One-time hook setup: `pre-commit install --hook-type pre-push`. This wires up the local, non-blocking documentation advisor (`scripts/docs_advise.py`) to run on your machine before every `git push` (it needs VPN + a locally logged-in Claude Code session; it skips quietly if either is unavailable, and never blocks the push). You can also run it manually at any time: `python scripts/docs_advise.py`.
+
 ## Running Tests, Linters, and Type Checks
 
 ### Run Tests
