@@ -1,0 +1,10 @@
+# 代码路径变更 => 候选相关文档。命中却未更新 => CI 失败(可用逃生舱跳过)。
+rules:
+  - paths: ["src/autodev/domain/ports.py"]
+    docs: ["README.md", "docs/architecture/diagrams.md", "CHANGELOG.md"]
+  - paths: ["src/autodev/domain/enums.py"]
+    docs: ["docs/architecture/diagrams.md", "CHANGELOG.md"]
+  - paths: ["src/autodev/domain/work_item.py"]
+    docs: ["docs/architecture/diagrams.md", "CHANGELOG.md"]
+  - paths: ["src/autodev/**"]
+    docs: ["CHANGELOG.md"]
