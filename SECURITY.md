@@ -7,7 +7,7 @@ If you discover a security vulnerability in AutoDev, please report it responsibl
 **Contact:** `待填` (fill in: security-team@example.com or security@feishu-group)
 
 **Process:**
-1. Do **not** open a public issue or merge request.
+1. Do **not** open a public issue or pull request.
 2. Email the security contact with:
    - Description of the vulnerability
    - Steps to reproduce (if applicable)

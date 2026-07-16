@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Documentation-consistency CI: Layer 1 deterministic checks (`tests/docs/`) covering fabricated-symbol detection, internal-link resolution, and fact-count markers, plus a Mermaid diagram render/validation job.
+
+### Changed
+- Repo CI migrated from GitLab CI to **GitHub Actions** (`.github/workflows/ci.yml`); the contribution flow for this repo is now a **GitHub PR** (fork/branch → PR) instead of a GitLab MR.
+- PR template and CODEOWNERS moved to `.github/pull_request_template.md` and `.github/CODEOWNERS` respectively (`.gitlab/` and `.gitlab-ci.yml` removed).
+
 ### Planned (Slice 2 / 后续)
 - Slice 2: replace the 7 fakes-only ports (Workspace, Context, Design, Review, Execution, Verification, Delivery) with real ACL adapters + end-to-end smoke test
 - GitLab MR auto-merge guards (Slice 4: trust-gradient auto-merge)
@@ -25,8 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `README.md` + `ROADMAP.md`: project face, architecture overview, current status, roadmap across all 4 slices
   - `docs/architecture/diagrams.md`: 5 Mermaid diagrams (system context, bounded contexts, state machine, sequence, data model)
   - `docs/adr/`: ADR 0001 (lightweight state machine), ADR 0002 (versioned artifacts), ADR 0003 (domain vocabulary neutralization), plus `0000-template.md` and `README.md` index
-  - Governance files: `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `CHANGELOG.md`, `.gitlab/merge_request_templates/default.md`, `CODEOWNERS`
-  - Quality gates: `ruff` + `mypy` configuration in `pyproject.toml`, `.pre-commit-config.yaml`, `.gitlab-ci.yml`
+  - Governance files: `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `CHANGELOG.md`, `.github/pull_request_template.md`, `.github/CODEOWNERS`
+  - Quality gates: `ruff` + `mypy` configuration in `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml`
   - Non-behavioral formatting/annotation pass across the existing codebase (no logic changes)
 
 ### Changed
@@ -106,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-<!-- 待填: GitLab 仓库地址（项目托管于 GitLab，非 GitHub；远程仓库 URL 待定） -->
+<!-- 待填: GitHub 仓库地址（项目托管于 GitHub；远程仓库 URL 待定） -->
 [Unreleased]: #
 [0.1.1]: #
 [0.1.0]: #
