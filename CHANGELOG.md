@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Documentation-consistency CI: Layer 1 deterministic checks (`tests/docs/`) covering fabricated-symbol detection, internal-link resolution, and fact-count markers, plus a Mermaid diagram render/validation job.
+- Documentation-consistency CI: Layer 2 doc-impact gate — `scripts/check_doc_impact.py` evaluates changed paths against a path-to-doc mapping in `docs/doc-ownership.yml`, wired as the `doc-impact` GitHub Actions job (PR-only). An escape hatch is available via the PR label `docs:none-needed` or a `Docs-Impact: none` commit trailer.
+- Documentation-consistency CI: Layer 3 non-blocking AI docs advisor GitHub Actions workflow (`.github/workflows/docs-advisor.yml`) that comments on pull requests when docs look likely stale relative to the code change; the job skips when no `ANTHROPIC_API_KEY` is configured.
+
+### Changed
+- Repo CI migrated from GitLab CI to **GitHub Actions** (`.github/workflows/ci.yml`); the contribution flow for this repo is now a **GitHub PR** (fork/branch → PR) instead of a GitLab MR.
+- PR template and CODEOWNERS moved to `.github/pull_request_template.md` and `.github/CODEOWNERS` respectively (`.gitlab/` and `.gitlab-ci.yml` removed).
+
 ### Planned (Slice 2 / 后续)
 - Slice 2: replace the 7 fakes-only ports (Workspace, Context, Design, Review, Execution, Verification, Delivery) with real ACL adapters + end-to-end smoke test
 - GitLab MR auto-merge guards (Slice 4: trust-gradient auto-merge)
@@ -25,8 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `README.md` + `ROADMAP.md`: project face, architecture overview, current status, roadmap across all 4 slices
   - `docs/architecture/diagrams.md`: 5 Mermaid diagrams (system context, bounded contexts, state machine, sequence, data model)
   - `docs/adr/`: ADR 0001 (lightweight state machine), ADR 0002 (versioned artifacts), ADR 0003 (domain vocabulary neutralization), plus `0000-template.md` and `README.md` index
-  - Governance files: `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `CHANGELOG.md`, `.gitlab/merge_request_templates/default.md`, `CODEOWNERS`
-  - Quality gates: `ruff` + `mypy` configuration in `pyproject.toml`, `.pre-commit-config.yaml`, `.gitlab-ci.yml`
+  - Governance files: `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `CHANGELOG.md`, `.github/pull_request_template.md`, `.github/CODEOWNERS`
+  - Quality gates: `ruff` + `mypy` configuration in `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml`
   - Non-behavioral formatting/annotation pass across the existing codebase (no logic changes)
 
 ### Changed
@@ -45,15 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Domain Model:** Complete DDD architecture with WorkItem aggregate root, state machine, and 7 hard rules (铁律)
   - WorkItem lifecycle: INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERIFY → SUBMIT_MR → DONE
   - Value objects: RepoRef, Requirement, Verdict, GateDecision, RepoStatus, WorkspaceHandle, Cost, RetryLedger, AutonomyDial
-  - Enums: TaskType, WorkflowState (12 states), WorkspaceMode, GatePoint, FailureKind
-  - 8 versioned artifact types (TriageArtifact, ContextArtifact, DesignArtifact, ReviewArtifact, ImplArtifact, AcceptanceArtifact, VerificationArtifact, DeliveryArtifact)
-  - 4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
+  - Enums: TaskType, WorkflowState (<!-- fact:workflow_states -->12 states), WorkspaceMode, GatePoint, FailureKind
+  - <!-- fact:artifacts -->8 versioned artifact types (TriageArtifact, ContextArtifact, DesignArtifact, ReviewArtifact, ImplArtifact, AcceptanceArtifact, VerificationArtifact, DeliveryArtifact)
+  - <!-- fact:events -->4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
   - 4 domain services (TriagePolicy, GatePolicy, TransitionRules, RetryPolicy)
-  - 9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
+  - <!-- fact:ports -->9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
 
 - **State Machine Engine:** Production-grade orchestration engine
   - `Engine.advance()` (single public method) internally drives success / suspend / retry / rollback / fail / finalize outcomes; module-level `run_until_quiescent()` advances a WorkItem through consecutive stages until none are runnable
-  - 12 workflow states with legal transitions validated
+  - <!-- fact:workflow_states -->12 workflow states with legal transitions validated
   - Retry ledger and failure categorization (transient / logic / fatal)
   - Human gate (WAIT_HUMAN) as first-class state
   - Artifact versioning (append-only semantics)
@@ -81,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Architecture Decisions
 - **DDD with Ubiquitous Language:** All code and docs use 统一语言 terms (WorkItem, DesignProposal, Artifact, Gate, etc.); 禁止 SDK-specific leakage into core domain.
-- **Hexagonal (Ports & Adapters):** Core orchestration domain defines 9 outbound ports; adapters implement them without polluting core logic.
+- **Hexagonal (Ports & Adapters):** Core orchestration domain defines <!-- fact:ports -->9 outbound ports; adapters implement them without polluting core logic.
 - **Event-Driven Collaboration:** Domain publishes events; the Collaboration/Observability bounded contexts subscribe (decoupled) — no dedicated "CollaborationPort" exists; Collaboration is a bounded context, not a code port.
 - **Append-Only Artifacts:** All stage outputs versioned per key; no overwrites. Enables audit trail and clean rollback semantics.
 - **AutonomyDial:** Gate decisions parameterized per (taskType, repo, gatePoint) → auto | human; enables gradual automation rollout.
@@ -106,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-<!-- 待填: GitLab 仓库地址（项目托管于 GitLab，非 GitHub；远程仓库 URL 待定） -->
+<!-- 待填: GitHub 仓库地址（项目托管于 GitHub；远程仓库 URL 待定） -->
 [Unreleased]: #
 [0.1.1]: #
 [0.1.0]: #

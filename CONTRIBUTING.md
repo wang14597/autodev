@@ -137,20 +137,22 @@ docs(architecture): update ADR-001 on ACL contract versioning
 
 ### Branch Strategy
 
-- **Main:** `main` — stable, production-ready code. All merges via reviewed MR.
+> **Note:** This repository is hosted on **GitHub**; contributions here go through a **GitHub PR** (fork/branch → PR). This is separate from the AutoDev *product*, which integrates with **GitLab** at runtime and opens **GitLab MRs** in the target projects it develops — that GitLab/MR terminology elsewhere in this doc (e.g. Core Domain Rules above) describes product behavior, not how you contribute to this repo.
+
+- **Main:** `main` — stable, production-ready code. All merges via reviewed PR.
 - **Feature/Task:** Branch off `main` with pattern `feature/short-description` or `fix/issue-number`.
 - **Slice Work:** For vertical slices (e.g., B1, B2), use `slice/b1-domain-model`.
 
 **Workflow:**
-1. Create feature branch: `git checkout -b feature/my-feature`
+1. Fork the repo (if you don't have write access) or create a feature branch directly: `git checkout -b feature/my-feature`
 2. Commit with Conventional Commits
-3. Push and open MR (see `.gitlab/merge_request_templates/default.md`)
-4. Pass code review against the **Hard Rules** (see `.gitlab/merge_request_templates/default.md`)
+3. Push and open a PR (see `.github/pull_request_template.md`)
+4. Pass code review against the **Hard Rules** (see `.github/pull_request_template.md`)
 5. Merge to main
 
-## Code Review Checklist (Self-Review Before Submitting MR)
+## Code Review Checklist (Self-Review Before Submitting PR)
 
-Before submitting your MR, verify against the **Hard Rules**:
+Before submitting your PR, verify against the **Hard Rules**:
 
 - **[Rule 1]** Core domain (`domain/`) has zero external SDK imports ✓
 - **[Rule 2]** All external I/O wrapped in ACL adapters (`adapters/`) ✓
@@ -158,7 +160,7 @@ Before submitting your MR, verify against the **Hard Rules**:
 - **[Rule 4]** Human gates properly modeled (not sneaky side-effects) ✓
 - **[Rule 5]** Changes include new/updated tests ✓
 
-See `.gitlab/merge_request_templates/default.md` for the full reviewers' checklist.
+See `.github/pull_request_template.md` for the full reviewers' checklist.
 
 ## Project References
 
@@ -172,4 +174,4 @@ See `.gitlab/merge_request_templates/default.md` for the full reviewers' checkli
 
 - **Architecture clarity:** Start with the Strategic Direction doc or check an ADR.
 - **Merge conflicts:** Coordinate with your team; the architecture is designed for minimal conflict.
-- **Rule violations:** Ask in the MR; clarifications are updates to this guide.
+- **Rule violations:** Ask in the PR; clarifications are updates to this guide.

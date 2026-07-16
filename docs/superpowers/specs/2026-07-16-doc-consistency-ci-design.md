@@ -8,10 +8,10 @@
 
 AutoDev 是个文档密集的大项目，文档极易滞后于代码。真实教训（本项目审计中反复出现）：漂移**不是"忘了改文档"，而是"文档写了但事实错了"**——
 
-- 伪造的代码符号：`IntakeHandler`（实为函数 `handle_intake`）、`CollaborationPort`（不存在）、`WorkItemTriaged`（不存在的事件）。
+- 伪造的代码符号：IntakeHandler（实为函数 `handle_intake`；本例中 IntakeHandler 本身不是真实符号）、CollaborationPort（不存在）、WorkItemTriaged（不存在的事件）。
 - 数字不一致：状态数 11 vs 实际 12；产物数 8 vs 写成 9；端口 8 vs 9。
 - 过期前向引用：`(规划中)`、`coming in B5`——里程碑落地后未清理。
-- CHANGELOG 陈旧：已完成项仍挂在 `Planned`。
+- CHANGELOG 陈旧：已完成项仍挂在"Planned"。
 
 **目标**：在合并 PR 前，用 CI 阻止"功能改动未同步/写错文档"的 PR 进入主干。**核心原则：能自动断言正确性的地方硬阻塞；只能靠判断的地方给建议，不阻塞。**
 
@@ -43,7 +43,7 @@ AutoDev 是个文档密集的大项目，文档极易滞后于代码。真实教
 - 从代码构建"已知符号集"：`src/autodev/**` 中所有 `class X`、`def x`、Enum 成员名。
 - 从受检文档中提取反引号标识符 `` `Foo` ``，**筛出看起来是代码符号的**（启发式：以 `Port`/`Artifact`/`Policy`/`Event`/`Handler`/`Repository` 结尾的 CamelCase，或 `handle_*`/`snake_case` 且含下划线）。
 - 断言：每个这样的 token 必须在已知符号集中；否则失败并列出漂移符号。
-- 允许清单：`docs/.doc-allowlist.txt` 收纳合法但非代码的例外（如领域概念 `CollaborationPort` 若仅出现在"未来端口"语境需显式登记，或改写为非反引号）。
+- 允许清单：`docs/.doc-allowlist.txt` 收纳合法但非代码的例外（如领域概念 CollaborationPort 若仅出现在"未来端口"语境需显式登记，或改写为非反引号）。
 
 **1.2 计数一致（杀"数字漂移"）**
 - 代码真值由测试直接计算：`len(WorkflowState)`、artifact 类数、`*Port` 数、事件类数、`pytest` 用例数（或从已知常量）。

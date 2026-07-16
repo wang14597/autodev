@@ -34,8 +34,8 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 | B1 | README + ROADMAP（项目门面） | ✓ 已完成 | — |
 | B2 | 架构图（5 张 Mermaid，含系统/限界/状态机/时序/数据模型） | ✓ 已完成 | — |
 | B3 | ADR 决策记录（轻量引擎/版本化/中性化） | ✓ 已完成 | — |
-| B4 | 协作与治理（CONTRIBUTING/SECURITY/LICENSE/CHANGELOG/MR 模板/CODEOWNERS） | ✓ 已完成 | — |
-| B5 | 质量门禁（ruff/mypy/pre-commit/.gitlab-ci.yml） | ✓ 已完成 | — |
+| B4 | 协作与治理（CONTRIBUTING/SECURITY/LICENSE/CHANGELOG/PR 模板/CODEOWNERS） | ✓ 已完成 | — |
+| B5 | 质量门禁（ruff/mypy/pre-commit/GitHub Actions CI） | ✓ 已完成 | — |
 
 **完成时间**：2026-07-16
 
@@ -50,7 +50,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 - `ROADMAP.md` 一份（本文件）
 - `docs/architecture/diagrams.md` 含 5 张图
 - `docs/adr/` 含 5 个文件
-- `CONTRIBUTING.md` / `SECURITY.md` / `LICENSE` / `CHANGELOG.md` / `.gitlab/merge_request_templates/default.md` / `CODEOWNERS` / `.pre-commit-config.yaml` / `.gitlab-ci.yml`
+- `CONTRIBUTING.md` / `SECURITY.md` / `LICENSE` / `CHANGELOG.md` / `.github/pull_request_template.md` / `.github/CODEOWNERS` / `.pre-commit-config.yaml` / `.github/workflows/ci.yml`
 - `pyproject.toml` 更新（ruff/mypy 配置）
 
 ---
@@ -366,10 +366,10 @@ AutonomyDial = {
 
 ### 快速反馈
 
-✓ 已达成：项目基线的 CI/CD 质量门禁（B5 任务，2026-07-16 完成）：本地 `ruff check` / `mypy src` + `.pre-commit-config.yaml` + `.gitlab-ci.yml`
+✓ 已达成：项目基线的 CI/CD 质量门禁（B5 任务，2026-07-16 完成）：本地 `ruff check` / `mypy src` + `.pre-commit-config.yaml` + `.github/workflows/ci.yml`（GitHub Actions）
 
 **后续**：
-- 切片 2 起：GitLab CI 中加入真实 ACL 适配器的集成测试
+- 切片 2 起：GitHub Actions CI 中加入真实 ACL 适配器的集成测试
 
 ### 人员与知识
 
