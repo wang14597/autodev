@@ -24,9 +24,10 @@ def gather_src_diff(base: str) -> str:
             capture_output=True,
             text=True,
             check=True,
+            timeout=30,
         ).stdout
-    except subprocess.CalledProcessError:
-        out = ""
+    except Exception:  # noqa: BLE001 顾问永不阻塞: 任何 git 失败都当作无 diff
+        return ""
     return out[:_MAX]
 
 
@@ -53,11 +54,14 @@ def _claude_runner(prompt: str) -> str:
 
 
 def main() -> int:
-    base = os.environ.get("DOC_ADVISE_BASE", "origin/main")
-    diff_text = gather_src_diff(base)
-    print("── 文档一致性顾问(本地, 非阻塞) ──")
-    print(advise(_claude_runner, diff_text))
-    return 0  # 永不阻塞 push
+    try:
+        base = os.environ.get("DOC_ADVISE_BASE", "origin/main")
+        diff_text = gather_src_diff(base)
+        print("── 文档一致性顾问(本地, 非阻塞) ──")
+        print(advise(_claude_runner, diff_text))
+    except Exception as e:  # noqa: BLE001 绝不阻塞 push
+        print(f"文档顾问跳过(顶层兜底): {e}")
+    return 0
 
 
 if __name__ == "__main__":

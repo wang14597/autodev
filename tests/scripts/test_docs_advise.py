@@ -26,3 +26,12 @@ def test_advise_degrades_gracefully_when_runner_raises():
 
     out = advise(boom, "some diff")
     assert "跳过" in out and "claude 不可用" in out
+
+
+def test_main_always_returns_zero_even_if_gather_raises(monkeypatch):
+    import scripts.docs_advise as m
+
+    monkeypatch.setattr(
+        m, "gather_src_diff", lambda base: (_ for _ in ()).throw(RuntimeError("git 没了"))
+    )
+    assert m.main() == 0
