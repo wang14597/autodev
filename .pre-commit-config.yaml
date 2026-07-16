@@ -19,3 +19,14 @@ repos:
         additional_dependencies: []
         args: ["src"]
         pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: docs-advise
+        name: 文档一致性顾问(本地, 非阻塞)
+        entry: python scripts/docs_advise.py
+        language: system
+        stages: [pre-push]
+        always_run: true
+        pass_filenames: false
+        verbose: true
