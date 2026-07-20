@@ -75,7 +75,7 @@ class GitWorkspaceAdapter:     # implements WorkspacePort
   - provision 幂等：重复调用复用同一 worktree，不报错。
   - cleanup：worktree 删除、分支删除、mirror 保留；对已清理对象幂等。
   - 失败翻译：未映射仓库 → `StageError(FATAL)`；模拟 fetch 失败（不可达 URL/超时）→ `StageError(TRANSIENT)`。
-- **端口一致性契约测试**：真实 `GitWorkspaceAdapter` 与 `FakeWorkspace` 跑同一组 `WorkspacePort` 断言，保证行为契约一致（"假实现不跑偏"）。
+- **端口一致性契约测试**：真实的 GitWorkspaceAdapter（待实现）与 `FakeWorkspace` 跑同一组 `WorkspacePort` 断言，保证行为契约一致（"假实现不跑偏"）。
 
 ## 7. 范围边界与非目标
 
@@ -86,7 +86,7 @@ class GitWorkspaceAdapter:     # implements WorkspacePort
 
 ## 8. 验收标准
 
-- `GitWorkspaceAdapter` 实现 `WorkspacePort` 三方法，全部行为测试用本地 git 仓通过。
+- GitWorkspaceAdapter（待实现）实现 `WorkspacePort` 三方法，全部行为测试用本地 git 仓通过。
 - 三模式（REUSE/FETCH/CREATE）各有测试；provision/cleanup 幂等有测试；失败翻译（TRANSIENT/FATAL）有测试。
 - 端口一致性契约测试证明真实适配器与 `FakeWorkspace` 行为一致。
 - 现有全套测试保持绿；`ruff check . && ruff format --check . && mypy src` 通过（注意：mypy 目前 `files=["src"]`，新适配器在 src 内，会被类型检查）。
