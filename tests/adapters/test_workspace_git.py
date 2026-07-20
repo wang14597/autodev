@@ -127,3 +127,37 @@ def test_provision_reuse_uses_cached_mirror(tmp_path):
     _mirror_from_remote(a, "r", remote)  # 预置 mirror
     h = a.provision(WorkItemId("w2"), RepoRef("r"), WorkspaceMode.REUSE, "autodev/w2")
     assert Path(h.location, "app.py").exists()
+
+
+def test_provision_second_work_item_does_not_corrupt_first(tmp_path):
+    # 回归测试: 两个工作项共享同一仓库 mirror 时, 第二次 FETCH+prune 不应删掉
+    # 第一个工作项本地创建的特性分支 (旧版用 `git clone --mirror` +
+    # `remote update --prune` 会把 refs/heads/autodev/wi1 当成远端已删的分支裁掉)。
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    h1 = a.provision(WorkItemId("wi1"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi1")
+    ws1 = Path(h1.location)
+    assert ws1.exists()
+
+    h2 = a.provision(WorkItemId("wi2"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi2")
+    ws2 = Path(h2.location)
+    assert ws2.exists()
+
+    # wi1 的 worktree 必须仍然有效: 分支未被裁剪, 内容仍在。
+    cur1 = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ws1, capture_output=True, text=True
+    )
+    assert cur1.returncode == 0
+    assert cur1.stdout.strip() == "autodev/wi1"
+    assert (ws1 / "app.py").read_text() == "x = 1\n"
+
+
+def test_provision_same_work_item_twice_is_idempotent(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    h1 = a.provision(WorkItemId("wi1"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi1")
+    h2 = a.provision(WorkItemId("wi1"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi1")
+
+    assert h1 == h2

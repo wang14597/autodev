@@ -113,9 +113,15 @@ class GitWorkspaceAdapter:
         return WorkspaceHandle(location=str(ws), label=branch)
 
     def _discard_worktree(self, mirror: Path, ws: Path) -> None:
-        # 分支不符: 移除旧 worktree, 让 provision 走正常路径重建 (F1-T5 将扩展为完整 cleanup)。
+        # 分支不符: 移除旧 worktree 及其本地分支, 让 provision 走正常路径重建
+        # (F1-T5 将扩展为与公共 cleanup 统一的完整实现)。
         if mirror.exists():
+            current = self._git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=ws)
             self._git(["-C", str(mirror), "worktree", "remove", "--force", str(ws)])
+            try:
+                self._git(["-C", str(mirror), "branch", "-D", current])
+            except StageError:
+                pass  # 分支已不存在(例如从未成功创建), 忽略
         else:
             shutil.rmtree(ws, ignore_errors=True)
 
@@ -126,16 +132,28 @@ class GitWorkspaceAdapter:
             return
         if mode is WorkspaceMode.FETCH:
             if mirror.exists():
-                self._git(["-C", str(mirror), "remote", "update", "--prune"])
+                # 标准 remote-tracking refspec: 仅裁剪 refs/remotes/origin/*,
+                # 不会碰到本地创建的 refs/heads/autodev/* 特性分支(其它工作项的 worktree 所在)。
+                self._git(["-C", str(mirror), "fetch", "--prune", "origin"])
             else:
                 url = self._resolve_url(name)
                 mirror.parent.mkdir(parents=True, exist_ok=True)
-                self._git(["clone", "--mirror", url, str(mirror)])
+                self._git(["init", "--bare", str(mirror)])
+                self._git(["-C", str(mirror), "remote", "add", "origin", url])
+                self._git(["-C", str(mirror), "fetch", "--prune", "origin"])
+                self._git(["-C", str(mirror), "remote", "set-head", "origin", "-a"])
             return
         self._create_seed_mirror(mirror)  # CREATE (Task 4)
 
     def _base_ref(self, mirror: Path) -> str:
-        return self._git(["-C", str(mirror), "symbolic-ref", "--short", "HEAD"])
+        # 优先用 remote-tracking HEAD(FETCH/REUSE); CREATE 的种子 mirror 无 origin,
+        # 退回本地 HEAD。
+        try:
+            return self._git(
+                ["-C", str(mirror), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"]
+            )
+        except StageError:
+            return self._git(["-C", str(mirror), "symbolic-ref", "--short", "HEAD"])
 
     def _create_seed_mirror(self, mirror: Path) -> None:
         raise NotImplementedError
