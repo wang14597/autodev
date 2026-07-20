@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -106,25 +105,28 @@ class GitWorkspaceAdapter:
             current = self._git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=ws)
             if current == branch:
                 return WorkspaceHandle(location=str(ws), label=branch)
-            self._discard_worktree(mirror, ws)
+            # 分支不符: 走与公共 cleanup 相同的移除路径, 再让 provision 正常路径重建。
+            self.cleanup(WorkspaceHandle(location=str(ws), label=current))
         self._ensure_mirror(mirror, repo.name, mode)
         base = self._base_ref(mirror)
         self._config.workspaces_dir.mkdir(parents=True, exist_ok=True)
         self._git(["-C", str(mirror), "worktree", "add", "-b", branch, str(ws), base])
         return WorkspaceHandle(location=str(ws), label=branch)
 
-    def _discard_worktree(self, mirror: Path, ws: Path) -> None:
-        # 分支不符: 移除旧 worktree 及其本地分支, 让 provision 走正常路径重建
-        # (F1-T5 将扩展为与公共 cleanup 统一的完整实现)。
-        if mirror.exists():
-            current = self._git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=ws)
-            self._git(["-C", str(mirror), "worktree", "remove", "--force", str(ws)])
-            try:
-                self._git(["-C", str(mirror), "branch", "-D", current])
-            except StageError:
-                pass  # 分支已不存在(例如从未成功创建), 忽略
-        else:
-            shutil.rmtree(ws, ignore_errors=True)
+    def cleanup(self, handle: WorkspaceHandle) -> None:
+        loc = Path(handle.location)
+        if not loc.exists():  # 幂等: 已经不存在, no-op
+            return
+        common = self._git(["-C", str(loc), "rev-parse", "--git-common-dir"])
+        common_path = Path(common)
+        if not common_path.is_absolute():
+            common_path = (loc / common_path).resolve()
+        self._git(["-C", str(common_path), "worktree", "remove", "--force", str(loc)])
+        try:
+            self._git(["-C", str(common_path), "branch", "-D", handle.label])
+        except StageError:
+            pass  # 分支已不存在(例如从未成功创建), 忽略
+        self._git(["-C", str(common_path), "worktree", "prune"])
 
     def _ensure_mirror(self, mirror: Path, name: str, mode: WorkspaceMode) -> None:
         if mode is WorkspaceMode.REUSE:

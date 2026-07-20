@@ -11,7 +11,7 @@ from autodev.adapters.workspace_git import (
 from autodev.domain.enums import FailureKind, WorkspaceMode
 from autodev.domain.errors import StageError
 from autodev.domain.ids import WorkItemId
-from autodev.domain.value_objects import RepoRef
+from autodev.domain.value_objects import RepoRef, WorkspaceHandle
 
 
 def _cfg(tmp_path: Path, repo_map=None) -> GitWorkspaceConfig:
@@ -161,6 +161,57 @@ def test_provision_same_work_item_twice_is_idempotent(tmp_path):
     h2 = a.provision(WorkItemId("wi1"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi1")
 
     assert h1 == h2
+
+
+def test_provision_is_idempotent(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    h1 = a.provision(WorkItemId("dup"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/dup")
+    h2 = a.provision(WorkItemId("dup"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/dup")
+    assert h1 == h2  # 复用同一 worktree, 不报错
+
+
+def test_provision_recreates_worktree_when_branch_differs(tmp_path):
+    # 回归: _discard_worktree 与 cleanup 统一后, "同一 work_item 换分支名" 的幂等
+    # 重建路径必须依然可用(旧分支删除、worktree 重建到新分支)。
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    a.provision(WorkItemId("wiX"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/old")
+    h2 = a.provision(WorkItemId("wiX"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/new")
+    assert h2.label == "autodev/new"
+    cur = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=Path(h2.location),
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert cur == "autodev/new"
+    branches = subprocess.run(
+        ["git", "-C", str(a._mirror_path("r")), "branch", "--list", "autodev/old"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "autodev/old" not in branches
+
+
+def test_cleanup_removes_worktree_and_branch_keeps_mirror(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    h = a.provision(WorkItemId("c1"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/c1")
+    a.cleanup(h)
+    assert not Path(h.location).exists()  # worktree 删除
+    assert a._mirror_path("r").exists()  # mirror 保留
+    branches = subprocess.run(
+        ["git", "-C", str(a._mirror_path("r")), "branch", "--list", "autodev/c1"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "autodev/c1" not in branches  # 分支删除
+
+
+def test_cleanup_is_idempotent(tmp_path):
+    a = GitWorkspaceAdapter(_cfg(tmp_path))
+    a.cleanup(WorkspaceHandle(location=str(tmp_path / "gone"), label="b"))  # 不报错
 
 
 def test_provision_create_inits_local_repo_with_worktree(tmp_path):
