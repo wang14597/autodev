@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -156,4 +157,22 @@ class GitWorkspaceAdapter:
             return self._git(["-C", str(mirror), "symbolic-ref", "--short", "HEAD"])
 
     def _create_seed_mirror(self, mirror: Path) -> None:
-        raise NotImplementedError
+        mirror.parent.mkdir(parents=True, exist_ok=True)
+        self._git(["init", "--bare", "--initial-branch=main", str(mirror)])
+        with tempfile.TemporaryDirectory() as tmp:
+            self._git(["init", "--initial-branch=main", tmp])
+            self._git(
+                [
+                    "-C",
+                    tmp,
+                    "-c",
+                    "user.name=AutoDev",
+                    "-c",
+                    "user.email=autodev@local",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "chore: init",
+                ]
+            )
+            self._git(["-C", tmp, "push", str(mirror), "main"])

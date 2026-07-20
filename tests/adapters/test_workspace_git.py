@@ -161,3 +161,18 @@ def test_provision_same_work_item_twice_is_idempotent(tmp_path):
     h2 = a.provision(WorkItemId("wi1"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi1")
 
     assert h1 == h2
+
+
+def test_provision_create_inits_local_repo_with_worktree(tmp_path):
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={}))  # 无远程
+    h = a.provision(WorkItemId("new1"), RepoRef("brand-new"), WorkspaceMode.CREATE, "autodev/new1")
+    ws = Path(h.location)
+    assert ws.exists()
+    cur = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ws, capture_output=True, text=True
+    ).stdout.strip()
+    assert cur == "autodev/new1"
+    # 有一个初始提交可据以工作
+    log = subprocess.run(["git", "log", "--oneline"], cwd=ws, capture_output=True, text=True).stdout
+    assert log.strip()  # 非空
+    assert a._mirror_path("brand-new").exists()
