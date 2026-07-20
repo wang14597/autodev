@@ -51,12 +51,12 @@ F3 是 `ContextPort.gather` 的真实实现（CONTEXT 阶段）：在 F1 建好�
 ## 5. `gather(requirement, handle)` 行为（两遍，全内置）
 
 1. **收集遍**：在 `handle.location` 里跑 Claude（plan 只读），prompt 要求输出 JSON `{"relevant_files":[相对 worktree 的路径...], "summary":"..."}`。稳健解析（提取 JSON 对象；解析失败 → 降级：relevant_files=(), summary=原始文本）。调用失败经 runner 的有界重试；耗尽 → 抛 `StageError` 上浮（无上下文=真失败，交引擎 RetryPolicy 重试整阶段）。
-2. **确定性守卫①**：过滤 relevant_files 中在 worktree 里**不存在**的路径（抓幻觉）。
-3. **复核遍（`_review(first_pass, requirement, handle) -> (files, summary)`，独立可组合）**：第二个 Claude 调用，拿"第一遍结果 + 真实 worktree"核对相关性/完整性/摘要准确性，输出**改进后**的 `{relevant_files, summary}`。
+2. **复核遍（`_review(first_pass, requirement, handle) -> (files, summary)`，独立可组合）**：第二个 Claude 调用，拿"第一遍结果 + 真实 worktree"核对相关性/完整性/摘要准确性，输出**改进后**的 `{relevant_files, summary}`。
    - 复核调用失败 → runner 有界重试；**重试耗尽 → 降级回第一遍结果**（已有可用上下文，不因质检失败废掉整阶段）。
-4. **确定性守卫②**：对改进后的 relevant_files 再过滤不存在路径。
-5. **落盘**：adapter（Python，非 Claude）把 `{relevant_files, summary, 元数据(work_item_id/requirement.goal)}` 渲染成 **Markdown**，写到 `~/.autodev/workitems/<work_item_id>/context-<discriminator>.md`。
-6. 返回 `ContextArtifact(workspace_location=handle.location, workspace_label=handle.label, context_file=<结果文件路径>)`。
+3. **落盘**：adapter（Python，非 Claude）把 `{relevant_files, summary, 元数据(work_item_id/requirement.goal)}` 渲染成 **Markdown**，写到 `~/.autodev/workitems/<work_item_id>/context-<discriminator>.md`。
+4. 返回 `ContextArtifact(workspace_location=handle.location, workspace_label=handle.label, context_file=<结果文件路径>)`。
+
+> 不做"文件存在性确定性守卫"：relevant_files 落进结果文件供人/下游 Claude 阅读，非程序化消费；相关性由复核遍把关即可。
 
 **Claude 只读**：两遍都是 `plan` 模式；写结果文件的是 adapter，Claude 不获写权限。
 
@@ -66,7 +66,6 @@ F3 是 `ContextPort.gather` 的真实实现（CONTEXT 阶段）：在 F1 建好�
 
 - **ClaudeContextAdapter 单测（注入假 runner，确定性）**：
   - 收集解析：合法 JSON → 正确；非 JSON → 降级(summary=原文, files=())。
-  - 守卫：不存在的路径被过滤（在 tmp worktree 造真实文件验证）。
   - 复核：假 runner 第二次返回改进结果 → 最终 artifact 反映改进；复核 runner 抛错（重试耗尽）→ 降级回第一遍。
   - 落盘：结果文件写到配置的 autodev_home 下正确路径，Markdown 含 summary + relevant_files；`ContextArtifact.context_file` 指向它；文件在 worktree 之外。
   - 收集调用失败 → StageError 上浮。
@@ -85,7 +84,7 @@ F3 是 `ContextPort.gather` 的真实实现（CONTEXT 阶段）：在 F1 建好�
 ## 8. 验收标准
 
 - ContextArtifact 改为指针形态，全仓（领域/序列化/fake/测试）一致更新，现有全套测试保持绿。
-- ClaudeContextAdapter 两遍质检 + 确定性守卫 + Markdown 落盘 + 指针 artifact，注入假 runner 的单测全通过；复核失败降级、收集失败上浮均有测试。
+- ClaudeContextAdapter 两遍质检（收集 + 复核改进）+ Markdown 落盘 + 指针 artifact，注入假 runner 的单测全通过；复核失败降级、收集失败上浮均有测试。
 - ClaudeCodeRunner 失败翻译 + 有界重试 + 调用参数有测试。
 - 端口一致性契约证明真实适配器与 FakeContext 行为一致。
 - `ruff check . && ruff format --check . && mypy src` 通过。
