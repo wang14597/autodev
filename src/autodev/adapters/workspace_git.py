@@ -7,6 +7,7 @@ from pathlib import Path
 
 from autodev.domain.enums import FailureKind
 from autodev.domain.errors import StageError
+from autodev.domain.value_objects import RepoRef, RepoStatus
 
 _NETWORK_HINTS = (
     "could not resolve host",
@@ -80,3 +81,15 @@ class GitWorkspaceAdapter:
         if not url:
             raise StageError(FailureKind.FATAL, f"仓库未在 repo_map 登记: {name}")
         return url
+
+    def repo_status(self, repo: RepoRef) -> RepoStatus:
+        exists_local = self._mirror_path(repo.name).exists()
+        exists_remote = False
+        url = self._config.repo_map.get(repo.name)
+        if url:
+            try:
+                self._git(["ls-remote", url])
+                exists_remote = True
+            except StageError:
+                exists_remote = False
+        return RepoStatus(exists_local=exists_local, exists_remote=exists_remote)

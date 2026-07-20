@@ -10,6 +10,7 @@ from autodev.adapters.workspace_git import (
 )
 from autodev.domain.enums import FailureKind
 from autodev.domain.errors import StageError
+from autodev.domain.value_objects import RepoRef
 
 
 def _cfg(tmp_path: Path, repo_map=None) -> GitWorkspaceConfig:
@@ -54,3 +55,39 @@ def test_git_timeout_is_transient(tmp_path):
     with pytest.raises(StageError) as ei:
         adapter._git(["clone", "x"])
     assert ei.value.failure_kind is FailureKind.TRANSIENT
+
+
+def _make_remote(path: Path) -> str:
+    """建一个带一个提交的本地 git 仓, 返回其路径(可作 file:// 远程)。"""
+    path.mkdir(parents=True)
+
+    def g(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+
+    g("init", "--initial-branch=main")
+    g("config", "user.email", "t@t")
+    g("config", "user.name", "t")
+    (path / "app.py").write_text("x = 1\n")
+    g("add", ".")
+    g("commit", "-m", "init")
+    return str(path)
+
+
+def test_repo_status_unmapped_is_all_false(tmp_path):
+    a = GitWorkspaceAdapter(_cfg(tmp_path))
+    st = a.repo_status(RepoRef("nope"))
+    assert st.exists_local is False and st.exists_remote is False
+
+
+def test_repo_status_mapped_remote_true(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    st = a.repo_status(RepoRef("r"))
+    assert st.exists_remote is True and st.exists_local is False
+
+
+def test_repo_status_local_true_when_mirror_present(tmp_path):
+    cfg = _cfg(tmp_path, repo_map={})
+    (cfg.mirror_dir / "r.git").mkdir(parents=True)
+    a = GitWorkspaceAdapter(cfg)
+    assert a.repo_status(RepoRef("r")).exists_local is True
