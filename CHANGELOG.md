@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Workspace ACL (F1): real `WorkspacePort` implementation (GitWorkspaceAdapter) via bare repo cache + worktree — supports modes REUSE/FETCH/CREATE with idempotent provision/cleanup and git-failure→domain-StageError translation. (Not yet wired into the run loop; that is a later feature.)
 - Documentation-consistency CI: Layer 1 deterministic checks (`tests/docs/`) covering fabricated-symbol detection, internal-link resolution, and fact-count markers, plus a Mermaid diagram render/validation job.
 - Documentation-consistency CI: Layer 2 doc-impact gate — `scripts/check_doc_impact.py` evaluates changed paths against a path-to-doc mapping in `docs/doc-ownership.yml`, wired as the `doc-impact` GitHub Actions job (PR-only). An escape hatch is available via the PR label `docs:none-needed` or a `Docs-Impact: none` commit trailer.
 - Documentation-consistency CI: Layer 3 non-blocking AI docs advisor, implemented as a **local `pre-push` hook** (`scripts/docs_advise.py`, wired via the `pre-commit` `pre-push` stage) that prints a short staleness-suspect list to the developer's terminal before `git push`; it degrades gracefully (never blocks the push) whenever the environment is unavailable (no VPN, no local Claude Code session, timeout, etc.).

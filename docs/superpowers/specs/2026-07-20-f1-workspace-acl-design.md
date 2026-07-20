@@ -37,7 +37,7 @@ class GitWorkspaceAdapter:     # implements WorkspacePort
 ```
 
 - **仓库解析 = 显式映射表**：`repo_map` 把 name 映射到完整 git URL，逐仓登记。测试映射到 `file://` 本地临时仓，无需真 GitLab、无需凭证。
-- **mirror = bare 缓存**：`git clone --mirror` 得到 `<mirror_dir>/<name>.git`；worktree 从 bare mirror `git worktree add` 出。
+- **mirror = bare 缓存**：`git init --bare` + `git remote add origin` + `git fetch --prune origin` + `git remote set-head origin -a`，得到 `<mirror_dir>/<name>.git`；worktree 从 bare mirror `git worktree add` 出。（注：故意避免 `--mirror` 的 `refs/*:refs/*` refspec，其 prune 会删除本地创建的特性分支，而其他工作项的 worktree 依赖这些分支。）
 - **鉴权**：真实 git 操作走运行环境的 ambient git 配置 / SSH；F1 不内建凭证逻辑。测试用 file:// 绕开。
 - `run` 注入（默认 `subprocess.run`）以便单测替身/断言命令。
 
@@ -50,7 +50,7 @@ class GitWorkspaceAdapter:     # implements WorkspacePort
 **`provision(work_item_id, repo, mode, branch)`**
 - 按 mode 准备 mirror：
   - **REUSE**：mirror 已在本地 → 直接使用。
-  - **FETCH**：mirror 缺 → `git clone --mirror <url>`；已在 → `git remote update`/fetch 刷新。
+  - **FETCH**：mirror 缺 → `git init --bare` + `git remote add origin` + `git fetch --prune origin` + `git remote set-head origin -a`；已在 → `git fetch --prune origin` 刷新。
   - **CREATE**：无远程（全新项目）→ 本地 init 一个空 bare 仓作为该项目 mirror，并造出一个初始提交（空 tree / 占位）使默认分支存在，可据以拉分支。**远程仓创建不在 F1，留给 F6。**
 - 拉 worktree：`git -C <mirror> worktree add -b <branch> <workspaces_dir>/<work_item_id> <base>`，base = mirror 默认分支（REUSE/FETCH）或初始提交（CREATE）。
 - 返回 `WorkspaceHandle(location=<worktree 路径>, label=<branch>)`。
