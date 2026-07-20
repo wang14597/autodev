@@ -8,8 +8,9 @@ from autodev.adapters.workspace_git import (
     GitWorkspaceConfig,
     _classify,
 )
-from autodev.domain.enums import FailureKind
+from autodev.domain.enums import FailureKind, WorkspaceMode
 from autodev.domain.errors import StageError
+from autodev.domain.ids import WorkItemId
 from autodev.domain.value_objects import RepoRef
 
 
@@ -91,3 +92,38 @@ def test_repo_status_local_true_when_mirror_present(tmp_path):
     (cfg.mirror_dir / "r.git").mkdir(parents=True)
     a = GitWorkspaceAdapter(cfg)
     assert a.repo_status(RepoRef("r")).exists_local is True
+
+
+def _mirror_from_remote(adapter, name, remote_url):
+    # 借 FETCH 建 mirror
+    adapter._git(["clone", "--mirror", remote_url, str(adapter._mirror_path(name))])
+
+
+def test_provision_fetch_creates_worktree_on_branch(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    h = a.provision(WorkItemId("wi123456"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi123456")
+    ws = Path(h.location)
+    assert ws.exists() and (ws / "app.py").read_text() == "x = 1\n"
+    assert h.label == "autodev/wi123456"
+    # 分支正确
+    cur = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ws, capture_output=True, text=True
+    ).stdout.strip()
+    assert cur == "autodev/wi123456"
+    assert a._mirror_path("r").exists()  # mirror 落地
+
+
+def test_provision_reuse_requires_existing_mirror(tmp_path):
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={}))
+    with pytest.raises(StageError) as ei:
+        a.provision(WorkItemId("w"), RepoRef("r"), WorkspaceMode.REUSE, "b")
+    assert ei.value.failure_kind is FailureKind.FATAL
+
+
+def test_provision_reuse_uses_cached_mirror(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    _mirror_from_remote(a, "r", remote)  # 预置 mirror
+    h = a.provision(WorkItemId("w2"), RepoRef("r"), WorkspaceMode.REUSE, "autodev/w2")
+    assert Path(h.location, "app.py").exists()
