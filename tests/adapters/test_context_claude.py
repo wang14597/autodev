@@ -124,6 +124,30 @@ def test_review_improves_result(tmp_path):
     assert "改进版" in txt and "b.py" in txt  # 反映复核改进
 
 
+def test_review_garbage_output_degrades_to_first_pass_not_empty(tmp_path):
+    # 复核这一遍的 runner 调用是"成功"的(没有抛 StageError), 但返回的内容既不是
+    # 干净 JSON, 也没有任何平衡的 {...} 对象可供兜底解析——纯自由文本。旧代码会
+    # 让 `_parse` 把这种输出降级成 `((), 原始文本)`, 从而丢弃第一遍已经收集好的
+    # relevant_files/summary, 结果比什么都不做还差。正确行为是识别出"复核没产出
+    # 可用 JSON", 直接把第一遍的结果原样保留下来。
+    outs = iter(
+        [
+            json.dumps({"relevant_files": ["a.py"], "summary": "第一遍摘要"}),
+            "复核这遍完全没有产出结构化内容, 只是随便说了几句自由文本。",
+        ]
+    )
+
+    def runner(prompt, cwd):
+        return next(outs)
+
+    a = ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "h", id_gen=lambda: "r3")
+    art = a.gather(REQ, _handle(tmp_path))
+    txt = Path(art.context_file).read_text()
+    assert "a.py" in txt  # 第一遍 relevant_files 被保留, 不是空
+    assert "第一遍摘要" in txt  # 第一遍 summary 被保留, 不是复核的自由文本
+    assert "(无)" not in txt
+
+
 def test_review_failure_degrades_to_first_pass(tmp_path):
     calls = {"n": 0}
 
