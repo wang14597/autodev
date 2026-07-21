@@ -51,6 +51,50 @@ def test_gather_propagates_collect_failure(tmp_path):
         a.gather(REQ, _handle(tmp_path))
 
 
+def test_gather_parses_json_despite_stray_brace_before_it(tmp_path):
+    # 模型输出里夹带了一段带花括号的代码示例(如 `foo() { return 1; }`), 随后才是
+    # 真正的 JSON。旧的贪婪正则 `\{.*\}` 会从第一个 `{` 跨到最后一个 `}`, 把两段
+    # 一起吞下导致 json.loads 失败, 进而把这个本应有效的响应误判为非 JSON 而降级
+    # (relevant_files 被丢弃)。平衡花括号扫描应能定位到最后那个真正完整的对象。
+    def runner(prompt, cwd):
+        return (
+            "示例代码里有个函数 foo() { return 1; } 仅供参考。\n\n"
+            "```json\n"
+            + json.dumps({"relevant_files": ["src/login.py"], "summary": "登录逻辑在 login.py"})
+            + "\n```"
+        )
+
+    a = ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "h", id_gen=lambda: "s1")
+    art = a.gather(REQ, _handle(tmp_path))
+    txt = Path(art.context_file).read_text()
+    assert "src/login.py" in txt
+    assert "登录逻辑在 login.py" in txt
+    assert "(无)" not in txt  # 未降级：relevant_files 被保留
+
+
+def test_gather_parses_json_wrapped_in_markdown_fence(tmp_path):
+    def runner(prompt, cwd):
+        payload = json.dumps({"relevant_files": ["src/a.py", "src/b.py"], "summary": "两个文件"})
+        return f"```json\n{payload}\n```"
+
+    a = ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "h", id_gen=lambda: "s2")
+    art = a.gather(REQ, _handle(tmp_path))
+    txt = Path(art.context_file).read_text()
+    assert "src/a.py" in txt and "src/b.py" in txt
+    assert "两个文件" in txt
+
+
+def test_gather_still_degrades_on_truly_non_json(tmp_path):
+    def runner(prompt, cwd):
+        return "只是随便说两句, 里面完全没有花括号或 JSON 结构。"
+
+    a = ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "h", id_gen=lambda: "s3")
+    art = a.gather(REQ, _handle(tmp_path))
+    txt = Path(art.context_file).read_text()
+    assert "只是随便说两句" in txt
+    assert "(无)" in txt  # relevant_files 降级为空
+
+
 def test_gather_multiple_writes_distinct_files(tmp_path):
     def runner(prompt, cwd):
         return json.dumps({"relevant_files": [], "summary": "s"})
