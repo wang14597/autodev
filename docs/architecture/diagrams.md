@@ -276,8 +276,7 @@ classDiagram
     class ContextArtifact {
         +str workspace_location
         +str workspace_label
-        +tuple relevant_files
-        +str summary
+        +str context_file
     }
     class DesignArtifact {
         +str change_summary

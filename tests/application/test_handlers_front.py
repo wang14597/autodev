@@ -76,7 +76,7 @@ def test_design_reads_context():
     wi = _wi()
     from autodev.domain.artifacts import ContextArtifact
 
-    wi.add_artifact("context", ContextArtifact("/tmp/x", "autodev/abc", ("app.py",), "s"))
+    wi.add_artifact("context", ContextArtifact("/tmp/x", "autodev/abc", "/tmp/x/context.md"))
     out = handle_design(wi, _ctx(), NOW)
     assert out.kind == "success" and out.artifact_key == "design"
     assert "fix typo" in out.artifact.change_summary

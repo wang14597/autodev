@@ -152,8 +152,7 @@ def _artifact_to_dict(a: object) -> dict:
             "__t": t,
             "workspace_location": a.workspace_location,
             "workspace_label": a.workspace_label,
-            "relevant_files": list(a.relevant_files),
-            "summary": a.summary,
+            "context_file": a.context_file,
         }
     if isinstance(a, DesignArtifact):
         return {"__t": t, "change_summary": a.change_summary, "target_files": list(a.target_files)}
@@ -185,8 +184,7 @@ def _artifact_from_dict(d: dict) -> object:
         return ContextArtifact(
             d["workspace_location"],
             d["workspace_label"],
-            tuple(d["relevant_files"]),
-            d["summary"],
+            d["context_file"],
         )
     if t == "DesignArtifact":
         return DesignArtifact(d["change_summary"], tuple(d["target_files"]))

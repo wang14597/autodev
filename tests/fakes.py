@@ -41,7 +41,9 @@ class FakeWorkspace:
 
 class FakeContext:
     def gather(self, requirement: Requirement, handle: WorkspaceHandle) -> ContextArtifact:
-        return ContextArtifact(handle.location, handle.label, ("app.py",), "fake context")
+        return ContextArtifact(
+            handle.location, handle.label, f"{handle.location}/../.autodev-fake/context.md"
+        )
 
 
 class FakeDesign:
