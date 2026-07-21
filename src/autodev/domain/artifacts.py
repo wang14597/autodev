@@ -17,8 +17,7 @@ class TriageArtifact:
 class ContextArtifact:
     workspace_location: str
     workspace_label: str
-    relevant_files: tuple[str, ...]
-    summary: str
+    context_file: str
 
 
 @dataclass(frozen=True)

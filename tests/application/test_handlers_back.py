@@ -56,7 +56,7 @@ def _wi(dial):
         NOW,
     )
     wi.type = TaskType.SMALL_CHANGE
-    wi.add_artifact("context", ContextArtifact("/tmp/x", "autodev/abc", ("app.py",), "s"))
+    wi.add_artifact("context", ContextArtifact("/tmp/x", "autodev/abc", "/tmp/x/context.md"))
     wi.add_artifact("design", DesignArtifact("do: fix typo", ("app.py",)))
     return wi
 

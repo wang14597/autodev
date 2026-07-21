@@ -92,7 +92,7 @@ def test_transient_failure_retries_then_succeeds():
             self.calls += 1
             if self.calls <= self.fail_times:
                 raise RuntimeError("transient blip")
-            return ContextArtifact(handle.location, handle.label, ("app.py",), "ok")
+            return ContextArtifact(handle.location, handle.label, f"{handle.location}/context.md")
 
     dial = AutonomyDial(
         frozenset(
