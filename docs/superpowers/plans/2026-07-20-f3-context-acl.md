@@ -484,7 +484,7 @@ git -c user.name='AutoDev' -c user.email='autodev@local' commit -m "feat(adapter
 
 **Files:** Create `tests/adapters/test_context_contract.py`
 
-**Interfaces:** 对 `ContextPort` 的共同行为断言，跑 `FakeContext` 与真实 `ClaudeContextAdapter`（注入假 runner）；外加一个 `@pytest.mark.live` 的真调 claude 冒烟（默认跳过）。
+**Interfaces:** 对 `ContextPort` 的共同行为断言，跑 `FakeContext` 与真实 ClaudeContextAdapter（注入假 runner）；外加一个 `@pytest.mark.live` 的真调 claude 冒烟（默认跳过）。
 
 - [ ] **Step 1: 写测试**
 ```python
