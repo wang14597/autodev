@@ -105,3 +105,35 @@ def test_gather_multiple_writes_distinct_files(tmp_path):
     a1 = a.gather(REQ, h)
     a2 = a.gather(REQ, h)
     assert a1.context_file != a2.context_file  # 不覆盖
+
+
+def test_review_improves_result(tmp_path):
+    outs = iter(
+        [
+            json.dumps({"relevant_files": ["a.py"], "summary": "初版"}),
+            json.dumps({"relevant_files": ["a.py", "b.py"], "summary": "改进版: 更完整"}),
+        ]
+    )
+
+    def runner(prompt, cwd):
+        return next(outs)
+
+    a = ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "h", id_gen=lambda: "r1")
+    art = a.gather(REQ, _handle(tmp_path))
+    txt = Path(art.context_file).read_text()
+    assert "改进版" in txt and "b.py" in txt  # 反映复核改进
+
+
+def test_review_failure_degrades_to_first_pass(tmp_path):
+    calls = {"n": 0}
+
+    def runner(prompt, cwd):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return json.dumps({"relevant_files": ["a.py"], "summary": "第一遍"})
+        raise StageError(FailureKind.TRANSIENT, "复核挂了")  # runner 已重试耗尽后抛
+
+    a = ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "h", id_gen=lambda: "r2")
+    art = a.gather(REQ, _handle(tmp_path))
+    txt = Path(art.context_file).read_text()
+    assert "第一遍" in txt  # 降级回第一遍, 不抛

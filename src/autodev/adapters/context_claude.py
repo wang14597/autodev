@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.errors import StageError
 from autodev.domain.value_objects import Requirement, WorkspaceHandle
 
 
@@ -88,7 +89,17 @@ class ClaudeContextAdapter:
         requirement: Requirement,
         handle: WorkspaceHandle,
     ) -> tuple[tuple[str, ...], str]:
-        return files, summary  # T4 实现真实复核
+        prompt = (
+            "下面是对本仓库的第一遍上下文收集结果。请对照真实代码核对其相关性/完整性/摘要准确性, "
+            "补漏、去无关、修正摘要, 输出改进后的 JSON: "
+            '{"relevant_files":[...], "summary":"..."}。只读, 不要改文件。\n\n'
+            f"需求: {requirement.goal}\n第一遍 relevant_files: {list(files)}\n"
+            f"第一遍 summary:\n{summary}"
+        )
+        try:
+            return self._parse(self._runner(prompt, Path(handle.location)))
+        except StageError:
+            return files, summary  # 复核失败(重试耗尽) → 降级回第一遍
 
     def _parse(self, out: str) -> tuple[tuple[str, ...], str]:
         data = self._try_load(out.strip())
