@@ -168,6 +168,30 @@ ruff format .
 
 详见 `CONTRIBUTING.md` 的 Linter / Type Checker 章节。
 
+### 控制台（前端 + 后端）
+
+平台控制台以领域聚合根 **WorkItem（工作项）** 为中心：用户创建工作项（填需求 + 关联一个项目/git 仓库）→ 后台自动驱动 需求录入→分诊→上下文收集（真调 Claude）→ 详情页展示完整生命周期与产出的上下文简报；多工作项并行。当前只跑到 CONTEXT 阶段，之后阶段（方案/评审/开发…）在界面标"待建设"，随 F5–F8 逐步接入。真调 Claude 需在能访问内网网关的环境（VPN）里运行。
+
+- 后端：`src/autodev/webapp/`（FastAPI），用真实 `WorkItem`/`SqliteWorkItemRepository`/`Engine` + F1/F3 适配器，有界驱动止于 DESIGN。
+- 前端：`frontend/`（Vite + React + TypeScript，TanStack Query 轮询，React Router），字体与 Markdown 渲染库本地打包，运行时零公网 CDN。
+
+**生产运行（构建后由后端一体托管）：**
+
+```bash
+cd frontend && npm ci && npm run build && cd ..     # 1) 构建前端 → frontend/dist
+pip install -e '.[web]'                              # 2) 装后端 Web 依赖
+export AUTODEV_REPO_MAP='{"my-service":"git@gitlab.example.com:team/my-service.git"}'
+export AUTODEV_HOME="$HOME/.autodev"                 # 工作项库/上下文结果落地(默认 ~/.autodev)
+export ANTHROPIC_BASE_URL="http://10.0.3.248:3000/api"   # 内网网关(需 VPN)
+python -m autodev.webapp                             # 默认 http://127.0.0.1:8000
+```
+
+未构建 `frontend/dist` 时，后端返回占位页（提示先构建），API 仍可用。
+
+**前端开发（热更新，代理到后端）：** 终端 A `python -m autodev.webapp`；终端 B `cd frontend && npm run dev`（Vite :5173，`/api` 自动代理到 :8000）。
+
+前端门禁（`frontend/` 下）：`npm run typecheck`、`npm run lint`、`npm run test`、`npm run build`、`npm run format:check`。前置：Node ≥ 20、npm（内网需可访问 registry 或内部镜像）。可选环境变量：`AUTODEV_MIRROR_DIR`、`AUTODEV_WORKSPACES_DIR`、`AUTODEV_WEB_HOST`、`AUTODEV_WEB_PORT`、`AUTODEV_FRONTEND_DIST`。
+
 ## 当前状态
 
 ### 已完成（切片 1：行走骨架）
@@ -185,10 +209,13 @@ ruff format .
 
 ✅ **出站端口**
 - <!-- fact:ports -->9 个端口协议已定义：WorkItemRepository、WorkspacePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
-- **2 个端口已真实实现**：
+- **4 个端口已真实实现**：
   - WorkItemRepository → SQLite 适配器（持久化/查询）
   - EventPublisher → 内存事件总线
-- **7 个端口当前为假实现**（mock/stub），真实 ACL 见下方"计划中"
+  - WorkspacePort → GitWorkspaceAdapter（git bare mirror + worktree，F1）
+  - ContextPort → ClaudeContextAdapter（Claude Code 两遍收集→复核，F3）
+- **5 个端口当前为假实现**（mock/stub），真实 ACL 见下方"计划中"
+- 另有驱动侧适配器：WorkItem 控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），用 F1+F3 驱动工作项走 需求录入→分诊→上下文
 
 ✅ **测试覆盖**
 - **48 个测试全部通过**
@@ -211,8 +238,8 @@ ruff format .
 ✓ WorkItemRepository        → SQLite 适配器
 ✓ EventPublisher            → 内存事件总线
 
-✗ WorkspacePort           → 假实现（阶段 2 真实化）
-✗ ContextPort             → 假实现（阶段 2 真实化）
+✓ WorkspacePort           → GitWorkspaceAdapter（git mirror + worktree，F1）
+✓ ContextPort             → ClaudeContextAdapter（Claude Code 收集→复核，F3）
 ✗ DesignPort              → 假实现（阶段 2 真实化）
 ✗ ReviewPort              → 假实现（阶段 2 真实化）
 ✗ ExecutionPort           → 假实现（阶段 2 真实化）
