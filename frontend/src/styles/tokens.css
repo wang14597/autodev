@@ -1,0 +1,53 @@
+/**
+ * Design tokens — "cool instrument" theme.
+ * NEVER hardcode hex colors in component CSS — always reference these vars.
+ */
+:root {
+  /* Surfaces & ink */
+  --paper: #f4f6f9;
+  --surface: #ffffff;
+  --surface-sunk: #eef1f5;
+  --ink: #17202e;
+  --ink-soft: #2b3648;
+  --muted: #667085;
+  --line: #e4e8ef;
+  --line-strong: #d3d9e3;
+  --on-ink: #ffffff;
+
+  /* Signal (amber) — running/current stage */
+  --signal: #d98a1f;
+  --signal-soft: #f6e6cc;
+  --signal-ink: #8a5a12;
+
+  /* Done (green) */
+  --done: #2f8f5b;
+  --done-soft: #dcefe4;
+
+  /* Error (red) */
+  --error: #c0453b;
+  --error-soft: #f6dedb;
+  --error-line: #ebc9c4;
+  --error-surface: #fcf3f2;
+
+  /* Fonts */
+  --font-ui: 'Space Grotesk Variable', system-ui, sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  /* Radius */
+  --radius: 8px;
+  --radius-sm: 6px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Measure for the rendered brief */
+  --stage-measure: 68ch;
+}

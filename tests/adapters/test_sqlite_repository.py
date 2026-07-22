@@ -46,6 +46,18 @@ def test_claim_runnable_excludes_terminal(tmp_path):
     assert a.id.value in ids and b.id.value not in ids
 
 
+def test_list_all_includes_terminal(tmp_path):
+    # 与 claim_runnable 不同：list_all 返回所有工作项(含终态), 供控制台列表持久展示。
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    a = _wi()
+    repo.save(a)
+    b = _wi()
+    b.transition_to(S.FAILED, "x", NOW)
+    repo.save(b)
+    ids = {wi.id.value for wi in repo.list_all()}
+    assert ids == {a.id.value, b.id.value}
+
+
 def test_save_is_upsert(tmp_path):
     repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
     wi = _wi()

@@ -74,6 +74,11 @@ class SqliteWorkItemRepository:
             rows = c.execute(q, _TERMINAL_OR_WAIT).fetchall()
         return [_from_dict(json.loads(r[0])) for r in rows]
 
+    def list_all(self) -> list[WorkItem]:
+        with self._conn() as c:
+            rows = c.execute("SELECT data FROM work_items").fetchall()
+        return [_from_dict(json.loads(r[0])) for r in rows]
+
 
 # ---------- 序列化（领域 ↔ dict），核心不感知 ----------
 
