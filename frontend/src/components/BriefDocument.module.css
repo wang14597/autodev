@@ -1,0 +1,85 @@
+.wrapper {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-sunk);
+}
+
+.captionTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.captionPath {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.body {
+  max-width: var(--stage-measure);
+  padding: var(--space-5);
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.body :global(h1),
+.body :global(h2),
+.body :global(h3) {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-2);
+  color: var(--ink);
+}
+
+.body :global(h1:first-child),
+.body :global(h2:first-child),
+.body :global(h3:first-child) {
+  margin-top: 0;
+}
+
+.body :global(p) {
+  margin-bottom: var(--space-3);
+}
+
+.body :global(ul),
+.body :global(ol) {
+  margin: 0 0 var(--space-3) var(--space-5);
+}
+
+.body :global(code) {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--surface-sunk);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.body :global(pre) {
+  font-family: var(--font-mono);
+  background: var(--surface-sunk);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  overflow-x: auto;
+  margin-bottom: var(--space-3);
+}
+
+.body :global(a) {
+  color: var(--signal-ink);
+}

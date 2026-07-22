@@ -1,0 +1,123 @@
+.pipeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.step:not(:last-child) {
+  padding-bottom: var(--space-4);
+}
+
+.rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+}
+
+.step:not(:last-child) .rail::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  bottom: -16px;
+  width: 1px;
+  background: var(--line);
+}
+
+.dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  z-index: 1;
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  color: var(--muted);
+}
+
+.dot[data-status='done'] {
+  border-color: var(--done);
+  color: var(--done);
+  background: var(--done-soft);
+}
+
+.dot[data-status='current'] {
+  border-color: var(--signal);
+  color: var(--signal-ink);
+  background: var(--signal-soft);
+}
+
+.dot[data-status='pending'] {
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+
+.dot[data-status='blocked'] {
+  border-color: var(--line);
+  color: var(--line-strong);
+  background: var(--surface-sunk);
+}
+
+.sonar {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--signal);
+  opacity: 0.6;
+  animation: sonar-ping 1.8s ease-out infinite;
+}
+
+@keyframes sonar-ping {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.body {
+  padding-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.label[data-status='current'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.label[data-status='blocked'] {
+  color: var(--muted);
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px var(--space-2);
+}

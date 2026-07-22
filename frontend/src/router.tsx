@@ -1,13 +1,15 @@
 import { createBrowserRouter } from 'react-router-dom'
-
-// Placeholder scaffold router — replaced with the full WorkItem console router in Part B.
-function Placeholder() {
-  return <p>AutoDev 控制台</p>
-}
+import { DashboardPage } from './pages/DashboardPage'
+import { StagePlaceholder } from './pages/StagePlaceholder'
+import { WorkItemDetailPage } from './pages/WorkItemDetailPage'
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Placeholder />,
+    element: <DashboardPage />,
+    children: [
+      { index: true, element: <StagePlaceholder /> },
+      { path: 'workitems/:id', element: <WorkItemDetailPage /> },
+    ],
   },
 ])

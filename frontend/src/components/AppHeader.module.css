@@ -1,0 +1,54 @@
+.header {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-6) var(--space-6) var(--space-5);
+}
+
+.texture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--line-strong);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  max-width: 960px;
+}
+
+.wordmark {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin-top: var(--space-3);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--signal-ink);
+}
+
+.title {
+  margin-top: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: var(--space-5) var(--space-4) var(--space-4);
+  }
+}
