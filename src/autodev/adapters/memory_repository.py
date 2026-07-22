@@ -17,3 +17,6 @@ class InMemoryWorkItemRepository:
 
     def claim_runnable(self) -> list[WorkItem]:
         return [wi for wi in self._store.values() if wi.is_runnable()]
+
+    def list_all(self) -> list[WorkItem]:
+        return list(self._store.values())

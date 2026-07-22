@@ -52,7 +52,6 @@ class WorkItemConsoleService:
         self._executor = executor
         self._clock = clock
         self._id_gen = id_gen
-        self._known_ids: list[WorkItemId] = []
 
     def create(self, goal: str, repo: str) -> str:
         if not goal or not goal.strip():
@@ -70,7 +69,6 @@ class WorkItemConsoleService:
             self._clock(),
         )
         self._repo.save(work_item)
-        self._known_ids.append(work_item_id)
         self._executor.submit(lambda: self._drive(work_item_id))
         return work_item_id.value
 
@@ -81,12 +79,8 @@ class WorkItemConsoleService:
             return None
 
     def list(self) -> list[WorkItem]:
-        items = []
-        for wid in self._known_ids:
-            try:
-                items.append(self._repo.get(wid))
-            except KeyError:
-                continue
+        # 从仓库枚举全部工作项(持久化, 进程重启后仍可见), 按创建时间新到旧。
+        items = self._repo.list_all()
         items.sort(key=lambda wi: wi.created_at or datetime.min, reverse=True)
         return items
 
