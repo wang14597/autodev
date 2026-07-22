@@ -80,8 +80,9 @@ class WorkItemConsoleService:
 
     def list(self) -> list[WorkItem]:
         # 从仓库枚举全部工作项(持久化, 进程重启后仍可见), 按创建时间新到旧。
+        # 用 timestamp 排序避免 naive/aware datetime 混比(created_at 恒为 UTC aware)。
         items = self._repo.list_all()
-        items.sort(key=lambda wi: wi.created_at or datetime.min, reverse=True)
+        items.sort(key=lambda wi: wi.created_at.timestamp() if wi.created_at else 0.0, reverse=True)
         return items
 
     def _drive(self, work_item_id: WorkItemId) -> None:
