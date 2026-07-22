@@ -1,0 +1,129 @@
+# tests/webapp/test_service.py
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+import pytest
+
+from autodev.adapters.event_bus import InMemoryEventBus
+from autodev.adapters.memory_repository import InMemoryWorkItemRepository
+from autodev.application.context import StageContext
+from autodev.application.engine import Engine
+from autodev.domain.enums import FailureKind
+from autodev.domain.enums import WorkflowState as S
+from autodev.domain.errors import StageError
+from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.webapp.service import SyncExecutor, WorkItemConsoleService
+from autodev.webapp.stubs import UnavailableStage
+from tests.fakes import FakeContext, FakeWorkspace
+
+NOW = datetime(2026, 7, 22, 12, 0, 0)
+
+
+def _engine(repo, gatherer=None):
+    stage = UnavailableStage()
+    ctx = StageContext(
+        FakeWorkspace(),
+        gatherer if gatherer is not None else FakeContext(),
+        stage,
+        stage,
+        stage,
+        stage,
+        stage,
+        TriagePolicy(),
+        GatePolicy(),
+    )
+    return Engine(repo, InMemoryEventBus(), ctx, clock=lambda: NOW)
+
+
+def _service(engine, repo=None, clock=lambda: NOW):
+    repo = repo or InMemoryWorkItemRepository()
+    return repo, WorkItemConsoleService(repo, engine, SyncExecutor(), clock=clock)
+
+
+def _increasing_clock():
+    state = {"n": 0}
+
+    def clock() -> datetime:
+        state["n"] += 1
+        return NOW + timedelta(seconds=state["n"])
+
+    return clock
+
+
+class _AlwaysFailingGatherer:
+    def gather(self, requirement, handle):
+        raise StageError(FailureKind.TRANSIENT, "boom")
+
+
+def test_create_drives_to_context_and_rests_at_design():
+    repo = InMemoryWorkItemRepository()
+    engine = _engine(repo)
+    _, svc = _service(engine, repo)
+
+    work_item_id = svc.create("加限流", "demo")
+    wi = svc.get(work_item_id)
+
+    assert wi is not None
+    assert wi.state == S.DESIGN
+    assert "context" in wi.artifacts
+
+
+def test_driver_never_calls_unimplemented_stages():
+    # UnavailableStage 的 designer/reviewer/... 一旦被调用即抛 FATAL -> FAILED。
+    # 断言最终态是 DESIGN（而非 FAILED），证明有界驱动没有越界调用桩端口。
+    repo = InMemoryWorkItemRepository()
+    engine = _engine(repo)
+    _, svc = _service(engine, repo)
+
+    work_item_id = svc.create("加限流", "demo")
+    wi = svc.get(work_item_id)
+
+    assert wi is not None
+    assert wi.state == S.DESIGN
+
+
+def test_stage_error_converges_to_failed():
+    repo = InMemoryWorkItemRepository()
+    engine = _engine(repo, gatherer=_AlwaysFailingGatherer())
+    _, svc = _service(engine, repo)
+
+    work_item_id = svc.create("加限流", "demo")
+    wi = svc.get(work_item_id)
+
+    assert wi is not None
+    assert wi.state == S.FAILED
+    assert wi.history[-1].reason.startswith("failed:")
+
+
+def test_create_rejects_empty():
+    repo = InMemoryWorkItemRepository()
+    engine = _engine(repo)
+    _, svc = _service(engine, repo)
+
+    with pytest.raises(ValueError):
+        svc.create("", "demo")
+    with pytest.raises(ValueError):
+        svc.create("   ", "demo")
+    with pytest.raises(ValueError):
+        svc.create("加限流", "")
+    with pytest.raises(ValueError):
+        svc.create("加限流", "   ")
+
+
+def test_list_get():
+    repo = InMemoryWorkItemRepository()
+    engine = _engine(repo)
+    _, svc = _service(engine, repo, clock=_increasing_clock())
+
+    assert svc.list() == []
+    assert svc.get("unknown-id") is None
+
+    id_a = svc.create("需求 A", "demo-a")
+    id_b = svc.create("需求 B", "demo-b")
+
+    items = svc.list()
+    assert [wi.id.value for wi in items] == [id_b, id_a]  # 新到旧
+
+    assert svc.get(id_a) is not None
+    assert svc.get(id_a).requirement.goal == "需求 A"  # type: ignore[union-attr]
