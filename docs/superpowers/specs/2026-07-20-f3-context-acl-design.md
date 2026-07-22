@@ -65,14 +65,13 @@ F3 是 `ContextPort.gather` 的真实实现（CONTEXT 阶段）：在 F1 建好�
 
 ## 6. 测试
 
-- **ClaudeContextAdapter 单测（注入假 runner，确定性）**：
-  - 收集解析：合法 JSON → 正确；非 JSON → 降级(summary=原文, files=())。
-  - 复核：假 runner 第二次返回改进结果 → 最终 artifact 反映改进；复核 runner 抛错（重试耗尽）→ 降级回第一遍。
-  - 落盘：结果文件写到配置的 autodev_home 下正确路径，Markdown 含 summary + relevant_files；`ContextArtifact.context_file` 指向它；文件在 worktree 之外。
+- **ClaudeContextAdapter 单测（注入假 runner，确定性；假 runner 返回 Markdown 文本）**：
+  - 落盘：收集遍返回的 Markdown 写到配置的 autodev_home 下正确路径；`ContextArtifact.context_file` 指向它；文件在 worktree 之外。
+  - 复核：假 runner 第二次返回改进后的 Markdown → 最终文件反映改进；复核 runner 抛 StageError（重试耗尽）→ 降级回第一遍；复核返回空/过短（<阈值）→ 降级回第一遍。
   - 收集调用失败 → StageError 上浮。
   - 多次 gather 写到不同文件（不覆盖）。
 - **ClaudeCodeRunner 单测（假 subprocess）**：失败翻译（超时/缺失/非零分类）、有界重试、调用参数（`-p/--permission-mode/--bare`、cwd、timeout）正确。
-- **live 冒烟（`@pytest.mark.live`，默认跳过）**：真 worktree 真调 claude，断言产出结果文件、非空 summary。
+- **live 冒烟（`@pytest.mark.live`，默认跳过）**：真 worktree 真调 claude，断言产出非空的结果 Markdown 文件。
 - **端口一致性契约**：真实 ClaudeContextAdapter（注入假 runner）与 `FakeContext` 跑同一组 `ContextPort` 断言（都返回带 context_file/loc/label 的 ContextArtifact，不抛）——顺带保证 FakeContext 已更新为新字段。
 
 ## 7. 范围边界与非目标
