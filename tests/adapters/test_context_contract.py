@@ -8,7 +8,6 @@ context_file(指针)、非空 workspace_location 的 ContextArtifact。
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -34,7 +33,7 @@ def adapter(request, tmp_path):
         return FakeContext()
 
     def runner(prompt: str, cwd: Path) -> str:
-        return json.dumps({"relevant_files": ["app.py"], "summary": "s"})
+        return "## 相关文件\n\n- `app.py`: 应用入口\n\n## 现状理解\n\ns\n\n## 改动要点\n\n(无)\n"
 
     return ClaudeContextAdapter(runner=runner, autodev_home=tmp_path / "home")
 

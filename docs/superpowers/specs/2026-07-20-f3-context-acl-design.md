@@ -50,13 +50,14 @@ F3 是 `ContextPort.gather` 的真实实现（CONTEXT 阶段）：在 F1 建好�
 
 ## 5. `gather(requirement, handle)` 行为（两遍，全内置）
 
-1. **收集遍**：在 `handle.location` 里跑 Claude（plan 只读），prompt 要求输出 JSON `{"relevant_files":[相对 worktree 的路径...], "summary":"..."}`。稳健解析（提取 JSON 对象；解析失败 → 降级：relevant_files=(), summary=原始文本）。调用失败经 runner 的有界重试；耗尽 → 抛 `StageError` 上浮（无上下文=真失败，交引擎 RetryPolicy 重试整阶段）。
-2. **复核遍（`_review(first_pass, requirement, handle) -> (files, summary)`，独立可组合）**：第二个 Claude 调用，拿"第一遍结果 + 真实 worktree"核对相关性/完整性/摘要准确性，输出**改进后**的 `{relevant_files, summary}`。
-   - 复核调用失败 → runner 有界重试；**重试耗尽 → 降级回第一遍结果**（已有可用上下文，不因质检失败废掉整阶段）。
-3. **落盘**：adapter（Python，非 Claude）把 `{relevant_files, summary, 元数据(work_item_id/requirement.goal)}` 渲染成 **Markdown**，写到 `~/.autodev/workitems/<work_item_id>/context-<discriminator>.md`。
-4. 返回 `ContextArtifact(workspace_location=handle.location, workspace_label=handle.label, context_file=<结果文件路径>)`。
+> 简化说明：最初设计让 Claude 输出 JSON `{relevant_files, summary}` 契约、adapter 解析后再渲染 Markdown；解析层踩了不少边界情况的坑，且 relevant_files 从无程序化消费方。现改为 Claude 直接产出 Markdown 上下文文档，adapter 只负责落盘，去掉整个解析层。
 
-> 不做"文件存在性确定性守卫"：relevant_files 落进结果文件供人/下游 Claude 阅读，非程序化消费；相关性由复核遍把关即可。
+1. **收集遍**：在 `handle.location` 里跑 Claude（plan 只读），prompt 要求直接产出一份 Markdown 上下文文档（含"相关文件/现状理解/改动要点"等小节），只输出文档本身、不要额外说明、不要修改文件。调用失败经 runner 的有界重试；耗尽 → 抛 `StageError` 上浮（无上下文=真失败，交引擎 RetryPolicy 重试整阶段）。
+2. **复核遍（`_review(doc, requirement, handle) -> str`，独立可组合）**：第二个 Claude 调用，拿"第一遍文档 + 真实 worktree"核对相关性/完整性/准确性，只输出**改进后的完整 Markdown 文档本身**。复核在文档文本上进行，不再解析结构化字段。
+   - 复核调用失败 → runner 有界重试；**重试耗尽 → 降级回第一遍文档**（已有可用上下文，不因质检失败废掉整阶段）。
+   - 复核调用成功但产出为空/过短等退化内容 → 同样降级回第一遍文档。
+3. **落盘**：adapter（Python，非 Claude）把复核后的 Markdown 文档加上一个小的元数据头（work_item_id/requirement.goal/分支），写到 `~/.autodev/workitems/<work_item_id>/context-<discriminator>.md`。
+4. 返回 `ContextArtifact(workspace_location=handle.location, workspace_label=handle.label, context_file=<结果文件路径>)`。
 
 **Claude 只读**：两遍都是 `plan` 模式；写结果文件的是 adapter，Claude 不获写权限。
 
