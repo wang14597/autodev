@@ -53,7 +53,7 @@ state 取值：INTAKE|TRIAGE|CONTEXT|DESIGN|REVIEW|IMPL|ACCEPT|VERIFY|SUBMIT_MR|
 
 **Interfaces produced:**
 - `class UnavailableStage`：实现 DesignPort/ReviewPort/ExecutionPort/VerificationPort/DeliveryPort 的方法，任一被调 → `raise StageError(FailureKind.FATAL, "stage not yet implemented")`。
-- `Executor`(Protocol): `submit(fn: Callable[[], None]) -> None`；`SyncExecutor`(测试, 直接调用)。
+- Executor(Protocol): `submit(fn: Callable[[], None]) -> None`；SyncExecutor(测试, 直接调用)。
 - `WorkItemConsoleService(repo, engine, executor, clock=..., id_gen=lambda: WorkItemId.new())`：
   - `create(goal: str, repo: str) -> str`(空值 ValueError)
   - `get(id: str) -> WorkItem | None`；`list() -> list[WorkItem]`
@@ -66,7 +66,7 @@ state 取值：INTAKE|TRIAGE|CONTEXT|DESIGN|REVIEW|IMPL|ACCEPT|VERIFY|SUBMIT_MR|
 - `view_detail.context`：若 `"context" in wi.artifacts` → 读 `ContextArtifact.context_file` 内容。`failure`：`state==FAILED` → 取 `wi.history[-1].reason`。
 
 - [ ] **Step 1: 写失败测试 test_service.py**
-  - `test_create_drives_to_context_and_rests_at_design`：用 `InMemoryWorkItemRepository` + `Engine(ctx=StageContext(FakeWorkspace(), FakeContext(), *UnavailableStage×5, TriagePolicy(), GatePolicy()))` + `SyncExecutor`；`svc.create("加限流","demo")`→ `wi=svc.get(id)`；断言 `wi.state == S.DESIGN` 且 `"context" in wi.artifacts`。
+  - `test_create_drives_to_context_and_rests_at_design`：用 `InMemoryWorkItemRepository` + `Engine(ctx=StageContext(FakeWorkspace(), FakeContext(), *UnavailableStage×5, TriagePolicy(), GatePolicy()))` + SyncExecutor；`svc.create("加限流","demo")`→ `wi=svc.get(id)`；断言 `wi.state == S.DESIGN` 且 `"context" in wi.artifacts`。
   - `test_driver_never_calls_unimplemented_stages`：UnavailableStage 的 designer 被调会抛错→若驱动越界测试会失败；断言最终 state==DESIGN(未 FAILED)。
   - `test_stage_error_converges_to_failed`：注入 gather 抛 `StageError(TRANSIENT,...)` 的假 context（重试耗尽后）→ 断言 state==FAILED。(利用引擎 RetryPolicy；用一个始终抛 TRANSIENT 的假 gatherer，引擎重试上限后 FAILED。)
   - `test_create_rejects_empty`：空 goal/repo → ValueError。
@@ -90,14 +90,14 @@ state 取值：INTAKE|TRIAGE|CONTEXT|DESIGN|REVIEW|IMPL|ACCEPT|VERIFY|SUBMIT_MR|
 - Test: `tests/webapp/test_app.py`
 
 **Interfaces:**
-- Consumes: Task 1 的 `WorkItemConsoleService`、`view_summary`/`view_detail`。
+- Consumes: Task 1 的 WorkItemConsoleService、`view_summary`/`view_detail`。
 - `create_app(service, projects: list[str]) -> FastAPI`：
   - `GET /api/projects` → `projects`
   - `POST /api/workitems` `{goal,repo}` → `{id}`(ValueError→400)
   - `GET /api/workitems` → `[view_summary(wi) for wi in service.list()]`
   - `GET /api/workitems/{id}` → `view_detail(wi, read_text)`；None→404
   - SPA 托管：存在 `frontend/dist/index.html`(或 `AUTODEV_FRONTEND_DIST`)→ `/api` 之后注册 catch-all `GET /{full_path:path}`：dist 内真实文件回文件(防穿越 `dist.resolve() in candidate.parents`)，否则回 index.html；无 dist→ `GET /` 返回 static/index.html 占位。
-- `build_app_from_env()`：读 `AUTODEV_HOME`(默认 ~/.autodev)/`AUTODEV_REPO_MAP`(JSON,坏值报 ValueError)/`AUTODEV_MIRROR_DIR`/`AUTODEV_WORKSPACES_DIR`；装配 `SqliteWorkItemRepository(home/"console.sqlite3")`、`InMemoryEventBus`、`StageContext`(GitWorkspaceAdapter+ClaudeContextAdapter+UnavailableStage×5+TriagePolicy+GatePolicy)、`Engine`、`ThreadPoolExecutorAdapter`、`projects=list(repo_map)`。
+- `build_app_from_env()`：读 `AUTODEV_HOME`(默认 ~/.autodev)/`AUTODEV_REPO_MAP`(JSON,坏值报 ValueError)/`AUTODEV_MIRROR_DIR`/`AUTODEV_WORKSPACES_DIR`；装配 `SqliteWorkItemRepository(home/"console.sqlite3")`、`InMemoryEventBus`、`StageContext`(GitWorkspaceAdapter+ClaudeContextAdapter+UnavailableStage×5+TriagePolicy+GatePolicy)、`Engine`、ThreadPoolExecutorAdapter、`projects=list(repo_map)`。
 - `__main__`：`AUTODEV_WEB_HOST`/`AUTODEV_WEB_PORT`(默认 127.0.0.1:8000)。
 
 - [ ] **Step 1: 写失败 test_app.py**（TestClient + 假 service）：`GET /api/projects`；`POST /api/workitems` 返回 id、空值 400；`GET /api/workitems` 列表形状；`GET /api/workitems/{id}` 详情形状 + 404；SPA 托管(setenv AUTODEV_FRONTEND_DIST 指 tmp dist)：`GET /`、未知路由回退、`/assets/*`、**穿越拒绝**、`/api` 不被 catch-all 遮蔽；无 dist→占位页含"前端尚未构建"。

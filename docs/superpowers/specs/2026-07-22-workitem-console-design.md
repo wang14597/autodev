@@ -22,7 +22,7 @@
 新增 `src/autodev/webapp/`（全新，非复用旧 Preview 代码）：
 
 - **组合根 `deps.py`/`config.py`**：从环境变量装配真实依赖 —— `SqliteWorkItemRepository`、`InMemoryEventBus`、`StageContext`（`GitWorkspaceAdapter`(F1) + `ClaudeContextAdapter`(F3) 为真实；DESIGN 及之后的端口用"未实现"桩适配器，被调用即抛 `StageError(FATAL,"stage not yet implemented")`，正常流程不会触达）、`TriagePolicy`/`GatePolicy`、`Engine`、线程池执行器、`repo_map`。
-- **应用服务 `WorkItemConsoleService`**（可注入假件单测）：
+- **应用服务 WorkItemConsoleService**（可注入假件单测）：
   - `create(goal, repo) -> id`：校验非空；`WorkItem.create(...)`（Requirement + RepoRef + 默认 AutonomyDial）；`repo.save`；投递后台 `_drive(id)`；返回 id。
   - `_drive(id)`（**有界驱动**）：循环 `wi = repo.get(id)`；当 `wi.state in {INTAKE,TRIAGE,CONTEXT}` 且 `wi.is_runnable()` 时 `engine.advance(wi)`（引擎内部已做失败翻译/重试/转移/事件/落盘），否则跳出。CONTEXT 成功后转移到 DESIGN → 跳出并静止；失败则引擎收敛到 FAILED → 跳出。**绝不进入未实现阶段。**
   - `get(id)`、`list()`：读仓库；`list` 新到旧。
@@ -57,7 +57,7 @@
 
 ## 6. 测试与门禁
 
-- **后端**：`WorkItemConsoleService` 单测（注入 `InMemoryWorkItemRepository` + FakeWorkspace/FakeContext + 同步执行器）：create→驱动到 CONTEXT→状态/产物正确；驱动**止于 DESIGN**（不触达未实现阶段）；F1/F3 抛 StageError → 引擎收敛 FAILED、DTO 有失败原因；list/get；views 投影正确（stages 状态、blocked 标记）。端点测试（TestClient + 假 service）：路由形状/状态码/404/400、SPA 托管/回退/穿越防护。
+- **后端**：WorkItemConsoleService 单测（注入 `InMemoryWorkItemRepository` + FakeWorkspace/FakeContext + 同步执行器）：create→驱动到 CONTEXT→状态/产物正确；驱动**止于 DESIGN**（不触达未实现阶段）；F1/F3 抛 StageError → 引擎收敛 FAILED、DTO 有失败原因；list/get；views 投影正确（stages 状态、blocked 标记）。端点测试（TestClient + 假 service）：路由形状/状态码/404/400、SPA 托管/回退/穿越防护。
 - **前端**：Vitest + RTL：api client、hooks 轮询停止条件、NewWorkItemForm 校验、LifelinePipeline 阶段着色、BriefDocument 消毒、StatusBadge。门禁：typecheck/oxlint/vitest/build/prettier，并接入 GitHub Actions frontend job。
 - **Python**：pytest / ruff / mypy / tests-docs 全绿；新增 web 可选依赖组；CHANGELOG + README 更新。
 
