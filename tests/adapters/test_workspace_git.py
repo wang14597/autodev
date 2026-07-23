@@ -74,6 +74,73 @@ def _make_remote(path: Path) -> str:
     return str(path)
 
 
+def _worktree_list(repo_path: str) -> str:
+    return subprocess.run(
+        ["git", "-C", repo_path, "worktree", "list"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def test_provision_local_repo_uses_worktree_off_source_no_mirror(tmp_path):
+    # 本地 git 仓库路径(file:// 登记)→ 直接在源仓上开 worktree, 不整仓克隆。
+    src = _make_remote(tmp_path / "voice-agent")
+    cfg = _cfg(tmp_path, repo_map={"voice-agent": f"worktree:{src}"})
+    a = GitWorkspaceAdapter(cfg)
+
+    h = a.provision(WorkItemId("wid1"), RepoRef("voice-agent"), WorkspaceMode.FETCH, "autodev/wid1")
+
+    # worktree 落在 workspaces_dir, 含源仓真实文件, 在指定分支
+    assert Path(h.location).exists()
+    assert (Path(h.location) / "app.py").read_text() == "x = 1\n"
+    assert h.label == "autodev/wid1"
+    # 关键: 没有建镜像(证明未整仓克隆)
+    assert not (cfg.mirror_dir / "voice-agent.git").exists()
+    # worktree 挂在源仓上(源仓 worktree list 含该路径)
+    assert str(Path(h.location)) in _worktree_list(src)
+
+
+def test_provision_local_repo_plain_path(tmp_path):
+    # 裸本地路径(非 file://)也识别为本地仓库
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+    h = a.provision(WorkItemId("w2"), RepoRef("proj"), WorkspaceMode.FETCH, "autodev/w2")
+    assert (Path(h.location) / "app.py").exists()
+
+
+def test_cleanup_local_worktree_removes_from_source(tmp_path):
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+    h = a.provision(WorkItemId("w3"), RepoRef("proj"), WorkspaceMode.FETCH, "autodev/w3")
+    assert str(Path(h.location)) in _worktree_list(src)
+
+    a.cleanup(h)
+
+    assert not Path(h.location).exists()  # worktree 目录已删
+    assert str(Path(h.location)) not in _worktree_list(src)  # 源仓注册已清
+    # 分支已删
+    branches = subprocess.run(
+        ["git", "-C", src, "branch", "--list", "autodev/w3"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert branches.strip() == ""
+
+
+def test_provision_two_local_workitems_parallel(tmp_path):
+    # 同一本地仓的两个工作项并行, 各自独立 worktree/分支, 互不影响。
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+    h1 = a.provision(WorkItemId("a"), RepoRef("proj"), WorkspaceMode.FETCH, "autodev/a")
+    h2 = a.provision(WorkItemId("b"), RepoRef("proj"), WorkspaceMode.FETCH, "autodev/b")
+    assert Path(h1.location).exists() and Path(h2.location).exists()
+    assert h1.location != h2.location
+    lst = _worktree_list(src)
+    assert str(Path(h1.location)) in lst and str(Path(h2.location)) in lst
+
+
 def test_repo_status_unmapped_is_all_false(tmp_path):
     a = GitWorkspaceAdapter(_cfg(tmp_path))
     st = a.repo_status(RepoRef("nope"))

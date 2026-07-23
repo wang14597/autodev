@@ -28,6 +28,10 @@ _AUTH_HINTS = (
 )
 
 
+# repo_map 值的显式标记: 表示"直接在该本地仓库上开 worktree", 而非镜像克隆。
+WORKTREE_SCHEME = "worktree:"
+
+
 def _classify(stderr: str) -> FailureKind:
     s = stderr.lower()
     if any(h in s for h in _NETWORK_HINTS):
@@ -84,6 +88,25 @@ class GitWorkspaceAdapter:
             raise StageError(FailureKind.FATAL, f"仓库未在 repo_map 登记: {name}")
         return url
 
+    def _local_source(self, name: str) -> Path | None:
+        """若 name 用 `worktree:` 前缀显式登记为本地仓库, 返回其路径; 否则 None。
+
+        `worktree:<path>` 是控制台自动登记本地项目时用的显式意图标记, 表示"直接在该
+        本地仓库上开 linked worktree(共享对象库, 不整仓克隆)"。其它一切值(含普通本地
+        路径、file://、ssh://、https://)一律走镜像克隆路径, 语义不变。
+        """
+        url = self._config.repo_map.get(name)
+        if not url or not url.startswith(WORKTREE_SCHEME):
+            return None
+        path = Path(url[len(WORKTREE_SCHEME) :]).expanduser()
+        return path if (path / ".git").exists() else None
+
+    def _local_base(self, src: Path) -> str:
+        try:
+            return self._git(["-C", str(src), "symbolic-ref", "--short", "HEAD"])
+        except StageError:
+            return self._git(["-C", str(src), "rev-parse", "HEAD"])
+
     def repo_status(self, repo: RepoRef) -> RepoStatus:
         exists_local = self._mirror_path(repo.name).exists()
         exists_remote = False
@@ -107,6 +130,17 @@ class GitWorkspaceAdapter:
                 return WorkspaceHandle(location=str(ws), label=branch)
             # 分支不符: 走与公共 cleanup 相同的移除路径, 再让 provision 正常路径重建。
             self.cleanup(WorkspaceHandle(location=str(ws), label=current))
+
+        src = self._local_source(repo.name)
+        if src is not None:
+            # 本地 git 仓库: 直接在其上开 linked worktree(共享对象库, 不整仓克隆)。
+            # worktree 落在 workspaces_dir/<id>, 仅在源仓 .git 里留可删的分支+worktree 注册,
+            # 不碰源仓工作目录。cleanup 通过 --git-common-dir 自动定位到源仓, 无需特判。
+            self._config.workspaces_dir.mkdir(parents=True, exist_ok=True)
+            base = self._local_base(src)
+            self._git(["-C", str(src), "worktree", "add", "-b", branch, str(ws), base])
+            return WorkspaceHandle(location=str(ws), label=branch)
+
         self._ensure_mirror(mirror, repo.name, mode)
         base = self._base_ref(mirror)
         self._config.workspaces_dir.mkdir(parents=True, exist_ok=True)
