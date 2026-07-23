@@ -3,8 +3,9 @@
 
 支持两种输入：
 - 已登记的项目名 → 原样返回。
-- 本地 git 仓库的目录路径 → 自动以目录名登记进 repo_map(值为 file:// 远程, 隔离克隆),
-  并持久化到磁盘(重启仍在)。这样用户直接填项目目录即可, 无需预先配 AUTODEV_REPO_MAP。
+- 本地 git 仓库的目录路径 → 自动以目录名登记进 repo_map(值为该裸本地路径),
+  并持久化到磁盘(重启仍在)。F1 见裸本地路径会直接在其上开 worktree(共享对象库,
+  不整仓克隆)。这样用户直接填项目目录即可, 无需预先配 AUTODEV_REPO_MAP。
 
 repo_map 是与 GitWorkspaceConfig 共享的同一个 dict, 运行时新增映射对 F1 立即生效。
 """
@@ -14,6 +15,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+
+from autodev.adapters.workspace_git import WORKTREE_SCHEME
 
 
 def _default_is_git_repo(path: Path) -> bool:
@@ -49,8 +52,8 @@ class ProjectRegistry:
         if path.is_dir() and self._is_git_repo(path):
             resolved = path.resolve()
             name = resolved.name
-            # file:// 强制真正克隆(隔离), 不与用户工作目录共享对象、不碰其工作区。
-            self._repo_map[name] = f"file://{resolved}"
+            # worktree: 标记 → F1 直接在该本地仓库上开 worktree(共享对象库, 不碰工作目录文件)。
+            self._repo_map[name] = f"{WORKTREE_SCHEME}{resolved}"
             self._persist()
             return name
         return raw  # 既非已登记名, 也不是本地 git 仓库 → 原样交给下游(CREATE/或报错)

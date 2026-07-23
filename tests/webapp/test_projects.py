@@ -26,7 +26,7 @@ def test_resolve_local_git_dir_registers_file_url(tmp_path: Path) -> None:
     name = reg.resolve(str(repo_dir))
 
     assert name == "voice-agent"
-    assert repo_map["voice-agent"] == f"file://{repo_dir.resolve()}"
+    assert repo_map["voice-agent"] == f"worktree:{repo_dir.resolve()}"
     # 同一个 dict 被改写(GitWorkspaceConfig 共享它 → F1 立即可见)
     assert "voice-agent" in reg.repo_map
 
@@ -39,7 +39,7 @@ def test_resolve_persists_to_disk(tmp_path: Path) -> None:
     reg.resolve(str(repo_dir))
 
     saved = json.loads(persist.read_text(encoding="utf-8"))
-    assert saved["voice-agent"] == f"file://{repo_dir.resolve()}"
+    assert saved["voice-agent"] == f"worktree:{repo_dir.resolve()}"
 
 
 def test_resolve_non_git_path_returned_unchanged(tmp_path: Path) -> None:
