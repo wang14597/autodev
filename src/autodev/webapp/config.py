@@ -25,6 +25,7 @@ from autodev.application.context import StageContext
 from autodev.application.engine import Engine
 from autodev.domain.policies import GatePolicy, TriagePolicy
 from autodev.webapp.app import create_app
+from autodev.webapp.projects import load_registry
 from autodev.webapp.service import WorkItemConsoleService
 from autodev.webapp.stubs import UnavailableStage
 
@@ -56,14 +57,19 @@ def build_app_from_env() -> FastAPI:
     home = Path(os.environ.get("AUTODEV_HOME", str(Path.home() / ".autodev"))).expanduser()
     home.mkdir(parents=True, exist_ok=True)
 
-    repo_map = _load_repo_map(os.environ.get("AUTODEV_REPO_MAP", "{}"))
+    env_repo_map = _load_repo_map(os.environ.get("AUTODEV_REPO_MAP", "{}"))
+    # 登记表：环境变量映射 + 持久化的本地项目(~/.autodev/repos.json)合并; 运行时可自动新增。
+    registry = load_registry(env_repo_map, home / "repos.json")
     mirror_dir = Path(os.environ.get("AUTODEV_MIRROR_DIR", str(home / "mirrors")))
     workspaces_dir = Path(os.environ.get("AUTODEV_WORKSPACES_DIR", str(home / "workspaces")))
 
     repo = SqliteWorkItemRepository(str(home / "console.sqlite3"))
     publisher = InMemoryEventBus()
 
-    workspace = GitWorkspaceAdapter(GitWorkspaceConfig(repo_map, mirror_dir, workspaces_dir))
+    # 与登记表共享同一个 repo_map dict, 运行时新增的本地项目对 F1 立即生效。
+    workspace = GitWorkspaceAdapter(
+        GitWorkspaceConfig(registry.repo_map, mirror_dir, workspaces_dir)
+    )
     runner = ClaudeCodeRunner()
     gatherer = ClaudeContextAdapter(runner=lambda p, c: runner.run(p, c), autodev_home=home)
     stub = UnavailableStage()
@@ -81,6 +87,6 @@ def build_app_from_env() -> FastAPI:
     )
     engine = Engine(repo, publisher, ctx, clock=lambda: datetime.now(UTC))
     executor = ThreadPoolExecutorAdapter()
-    service = WorkItemConsoleService(repo, engine, executor)
+    service = WorkItemConsoleService(repo, engine, executor, resolve_project=registry.resolve)
 
-    return create_app(service, projects=sorted(repo_map))
+    return create_app(service, projects=registry.names)

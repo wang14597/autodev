@@ -46,12 +46,14 @@ class WorkItemConsoleService:
         executor: Executor,
         clock: Callable[[], datetime] = _default_clock,
         id_gen: Callable[[], WorkItemId] = WorkItemId.new,
+        resolve_project: Callable[[str], str] = lambda raw: raw,
     ) -> None:
         self._repo = repo
         self._engine = engine
         self._executor = executor
         self._clock = clock
         self._id_gen = id_gen
+        self._resolve_project = resolve_project
 
     def create(self, goal: str, repo: str) -> str:
         if not goal or not goal.strip():
@@ -59,11 +61,13 @@ class WorkItemConsoleService:
         if not repo or not repo.strip():
             raise ValueError("repo must not be empty")
 
+        # 把"项目"输入解析成 repo_map 里的项目名(本地 git 路径会被自动登记)。
+        project = self._resolve_project(repo)
         work_item_id = self._id_gen()
-        requirement = Requirement(goal, repo, (), goal)
+        requirement = Requirement(goal, project, (), goal)
         work_item = WorkItem.create(
             work_item_id,
-            RepoRef(repo),
+            RepoRef(project),
             requirement,
             AutonomyDial.all_human(),
             self._clock(),
