@@ -111,6 +111,29 @@ def test_create_rejects_empty():
         svc.create("加限流", "   ")
 
 
+def test_create_applies_project_resolver():
+    # resolve_project 把原始"项目"输入(如本地路径)映射成 repo_map 里的项目名,
+    # WorkItem 的 repo_ref / requirement.target_repo 用解析后的名字。
+    repo = InMemoryWorkItemRepository()
+    engine = _engine(repo)
+    calls: list[str] = []
+
+    def resolver(raw: str) -> str:
+        calls.append(raw)
+        return "voice-agent" if raw.startswith("/") else raw
+
+    svc = WorkItemConsoleService(
+        repo, engine, SyncExecutor(), clock=lambda: NOW, resolve_project=resolver
+    )
+    wid = svc.create("修 preflight", "/Users/me/projects/voice-agent")
+    wi = svc.get(wid)
+
+    assert calls == ["/Users/me/projects/voice-agent"]
+    assert wi is not None
+    assert wi.repo_ref.name == "voice-agent"
+    assert wi.requirement.target_repo == "voice-agent"
+
+
 def test_list_get():
     repo = InMemoryWorkItemRepository()
     engine = _engine(repo)

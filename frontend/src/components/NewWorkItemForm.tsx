@@ -52,7 +52,7 @@ export function NewWorkItemForm() {
           list={datalistId}
           value={repo}
           onChange={(e) => setRepo(e.target.value)}
-          placeholder="选择或输入项目名"
+          placeholder="项目名，或本地 git 仓库路径"
           disabled={mutation.isPending}
         />
         <datalist id={datalistId}>
@@ -60,6 +60,7 @@ export function NewWorkItemForm() {
             <option key={project} value={project} />
           ))}
         </datalist>
+        <p className={styles.hint}>填已登记项目名，或本地 git 仓库目录路径（会自动登记）。</p>
       </div>
 
       {validationError && <p className={styles.error}>{validationError}</p>}

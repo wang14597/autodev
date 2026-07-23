@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -50,12 +51,16 @@ def _read_text(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def create_app(service: ConsoleService, projects: list[str]) -> FastAPI:
+def create_app(
+    service: ConsoleService,
+    projects: list[str] | Callable[[], list[str]],
+) -> FastAPI:
     app = FastAPI(title="AutoDev WorkItem 控制台")
 
     @app.get("/api/projects")
     def get_projects() -> list[str]:
-        return projects
+        # projects 可为静态列表或 provider(登记表运行时会新增本地项目, 故用 provider 取最新)。
+        return projects() if callable(projects) else projects
 
     @app.post("/api/workitems")
     def create_workitem(payload: CreateWorkItemRequest) -> dict[str, str]:

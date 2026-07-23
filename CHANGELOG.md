@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 本地项目自动登记：创建工作项时"项目"输入若是一个本地 git 仓库目录路径，控制台自动以目录名登记进 `repo_map`（值为 `file://` 远程，**隔离克隆**——不碰用户工作目录），并持久化到 `~/.autodev/repos.json`（重启仍在）。之后 F1 在真实代码上建 worktree 收集上下文，无需预先手配 `AUTODEV_REPO_MAP`。`GET /api/projects` 反映运行时新增的项目。
 - WorkItem 控制台（driving adapter，前端 + 后端）：平台面向用户的控制台，中心实体是领域聚合根 `WorkItem`。后端 `src/autodev/webapp/`（FastAPI）用真实 `WorkItem` + `SqliteWorkItemRepository` + `Engine` + F1/F3 适配器，**有界驱动**只自动跑 INTAKE→TRIAGE→CONTEXT 并止于 DESIGN（DESIGN 及之后用抛错桩，正常流程不触达）；应用服务/视图投影/路由均以注入假件单测。前端 `frontend/`（Vite + React + TypeScript，TanStack Query 轮询，React Router），以 WorkItem 为中心：创建工作项（需求 + 关联项目）→ 自动收集 → 生命周期流水线 + 上下文简报展示，多工作项并行；字体与 Markdown 渲染库本地打包（运行时零公网 CDN），自带 typecheck/oxlint/vitest/build/prettier 门禁并接入 GitHub Actions frontend job。FastAPI 生产托管 `frontend/dist`（SPA 客户端路由回退 + 目录穿越防护），未构建回退占位页、API 仍可用。新增可选依赖组 `web`（fastapi/uvicorn/httpx）与环境变量 `AUTODEV_FRONTEND_DIST`。
 - `WorkItemRepository.list_all()`：只读枚举全部工作项（含终态），供控制台列表在进程重启后仍能持久展示（`claim_runnable` 排除终态，不适用）；SQLite 与内存适配器均实现。
 - Workspace ACL (F1): real `WorkspacePort` implementation (GitWorkspaceAdapter) via bare repo cache + worktree — supports modes REUSE/FETCH/CREATE with idempotent provision/cleanup and git-failure→domain-StageError translation. (Not yet wired into the run loop; that is a later feature.)
