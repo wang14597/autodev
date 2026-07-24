@@ -20,7 +20,7 @@ const project: Project = {
   id: 'p-1',
   name: 'demo',
   repo_source: '/repos/demo',
-  default_branch: 'main',
+  branch: 'main',
   workitem_count: 2,
   created_at: null,
 }
@@ -41,19 +41,19 @@ function renderHeader() {
 describe('ProjectHeader', () => {
   beforeEach(() => {
     vi.mocked(client.deleteProject).mockReset().mockResolvedValue(undefined)
-    vi.mocked(client.refreshProject).mockReset().mockResolvedValue({ default_branch: 'main' })
+    vi.mocked(client.refreshProject).mockReset().mockResolvedValue({ branch: 'main' })
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('renders the project identity: name, repo source, default branch', () => {
+  it('renders the project identity: name, repo source, tracked branch', () => {
     renderHeader()
 
     expect(screen.getByText('demo')).toBeInTheDocument()
     expect(screen.getByText('/repos/demo')).toBeInTheDocument()
-    expect(screen.getByText('默认分支 main')).toBeInTheDocument()
+    expect(screen.getByText('跟踪分支 main')).toBeInTheDocument()
   })
 
   it('calls refreshProject when the refresh button is clicked', async () => {

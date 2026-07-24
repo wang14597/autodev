@@ -107,6 +107,14 @@ class GitWorkspaceAdapter:
         except StageError:
             return self._git(["-C", str(src), "rev-parse", "HEAD"])
 
+    def _rev_parse_ok(self, cwd: Path, ref: str) -> bool:
+        """`git rev-parse --verify --quiet <ref>` 是否成功(引用是否存在), 不抛异常。"""
+        try:
+            self._git(["rev-parse", "--verify", "--quiet", ref], cwd=cwd)
+            return True
+        except StageError:
+            return False
+
     def repo_status(self, repo: RepoRef) -> RepoStatus:
         if self._local_source(repo.name) is not None or self._mirror_path(repo.name).exists():
             # worktree: 本地仓库确实存在, 或该仓库的 mirror 已建好(已 prepare 过)
@@ -122,23 +130,37 @@ class GitWorkspaceAdapter:
                 exists_remote = False
         return RepoStatus(exists_local=False, exists_remote=exists_remote)
 
-    def prepare(self, repo: RepoRef) -> str:
-        """同项目共享的一次性 setup: 建/刷新 mirror(或定位本地仓库), 返回默认分支。
+    def prepare(self, repo: RepoRef, branch: str | None = None) -> str:
+        """同项目共享的一次性 setup(也是"刷新"用的重入口): 建/刷新 mirror(或对本地仓库
+        best-effort fetch 其 origin), 解析并返回跟踪分支。
 
-        幂等: 本地仓库仅重读 HEAD; 远程仓库通过 FETCH 模式复用已存在的 mirror
-        (`_ensure_mirror` 对已存在的 mirror 走 fetch --prune, 不会重新整仓克隆)。
+        幂等: 本地仓库每次重新 fetch(best-effort, 无 origin/离线不报错)+ 重读 HEAD(或直接
+        用给定 branch); 远程仓库通过 FETCH 模式复用已存在的 mirror(`_ensure_mirror` 对
+        已存在的 mirror 走 fetch --prune, 不会重新整仓克隆)。
         """
         src = self._local_source(repo.name)
         if src is not None:
-            return self._local_base(src)
+            try:
+                # best-effort: 本地仓库可能没有 origin(纯本地项目)或离线, 都不应阻断 prepare。
+                self._git(["-C", str(src), "fetch", "--all", "--prune"])
+            except StageError:
+                pass
+            return branch if branch else self._local_base(src)
         mirror = self._mirror_path(repo.name)
         self._ensure_mirror(mirror, repo.name, WorkspaceMode.FETCH)
+        if branch:
+            return branch
         # _base_ref 对已建 remote-tracking 的 mirror 返回 "origin/<branch>"(供 provision
-        # 直接当 worktree 起点用); prepare 对外承诺的是"默认分支名"本身, 去掉前缀。
+        # 直接当 worktree 起点用); prepare 对外承诺的是"跟踪分支名"本身, 去掉前缀。
         return self._base_ref(mirror).removeprefix("origin/")
 
     def provision(
-        self, work_item_id: WorkItemId, repo: RepoRef, mode: WorkspaceMode, branch: str
+        self,
+        work_item_id: WorkItemId,
+        repo: RepoRef,
+        mode: WorkspaceMode,
+        branch: str,
+        base_branch: str | None = None,
     ) -> WorkspaceHandle:
         mirror = self._mirror_path(repo.name)
         ws = self._config.workspaces_dir / work_item_id.value
@@ -155,15 +177,34 @@ class GitWorkspaceAdapter:
             # worktree 落在 workspaces_dir/<id>, 仅在源仓 .git 里留可删的分支+worktree 注册,
             # 不碰源仓工作目录。cleanup 通过 --git-common-dir 自动定位到源仓, 无需特判。
             self._config.workspaces_dir.mkdir(parents=True, exist_ok=True)
-            base = self._local_base(src)
+            # 本地仓无 origin/<base_branch>(纯本地项目, 或该分支未推送过)时退回本地同名分支。
+            base = (
+                self._resolve_base(src, base_branch, fallback=base_branch)
+                if base_branch
+                else self._local_base(src)
+            )
             self._git(["-C", str(src), "worktree", "add", "-b", branch, str(ws), base])
             return WorkspaceHandle(location=str(ws), label=branch)
 
         self._ensure_mirror(mirror, repo.name, mode)
-        base = self._base_ref(mirror)
+        # 镜像必来自 origin; 若 base_branch 无对应 remote-tracking 分支, 退回镜像默认分支
+        # (而非把 base_branch 当本地分支名, 镜像里本无本地分支)。
+        base = (
+            self._resolve_base(mirror, base_branch, fallback=self._base_ref(mirror))
+            if base_branch
+            else self._base_ref(mirror)
+        )
         self._config.workspaces_dir.mkdir(parents=True, exist_ok=True)
         self._git(["-C", str(mirror), "worktree", "add", "-b", branch, str(ws), base])
         return WorkspaceHandle(location=str(ws), label=branch)
+
+    def _resolve_base(self, cwd: Path, base_branch: str, fallback: str) -> str:
+        """worktree 基点: base_branch 有对应 remote-tracking 分支(fetch 后最新)则用之;
+        否则退回调用方给定的 fallback。"""
+        origin_ref = f"origin/{base_branch}"
+        if self._rev_parse_ok(cwd, origin_ref):
+            return origin_ref
+        return fallback
 
     def cleanup(self, handle: WorkspaceHandle) -> None:
         loc = Path(handle.location)

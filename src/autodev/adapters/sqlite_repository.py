@@ -100,6 +100,7 @@ def _to_dict(wi: WorkItem) -> dict:
         "autonomy_dial": [[t.name, r, g.name] for (t, r, g) in wi.autonomy_dial.auto_gates],
         "type": wi.type.name if wi.type else None,
         "project_id": wi.project_id.value if wi.project_id else None,
+        "base_branch": wi.base_branch,
         "state": wi.state.name,
         "artifact_versions": {
             k: [_artifact_to_dict(a) for a in versions]
@@ -131,6 +132,7 @@ def _from_dict(d: dict) -> WorkItem:
         ),
         type=TaskType[d["type"]] if d["type"] else None,
         project_id=ProjectId(d["project_id"]) if d.get("project_id") else None,
+        base_branch=d.get("base_branch"),
         state=WorkflowState[d["state"]],
         artifact_versions={
             k: [_artifact_from_dict(a) for a in versions]

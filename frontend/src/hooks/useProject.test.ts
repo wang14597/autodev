@@ -19,7 +19,7 @@ function detail(workitems: WorkItemSummary[]): ProjectDetail {
     id: 'p-1',
     name: 'demo',
     repo_source: '/repos/demo',
-    default_branch: 'main',
+    branch: 'main',
     workitem_count: workitems.length,
     created_at: null,
     workitems,

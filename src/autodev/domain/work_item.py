@@ -59,6 +59,7 @@ class WorkItem:
     autonomy_dial: AutonomyDial
     type: TaskType | None = None
     project_id: ProjectId | None = None
+    base_branch: str | None = None
     state: WorkflowState = S.INTAKE
     artifact_versions: dict[str, list] = field(default_factory=dict)
     history: list[StateTransition] = field(default_factory=list)
@@ -79,6 +80,7 @@ class WorkItem:
         autonomy_dial: AutonomyDial,
         now: datetime,
         project_id: ProjectId | None = None,
+        base_branch: str | None = None,
     ) -> WorkItem:
         return cls(
             id=id,
@@ -86,6 +88,7 @@ class WorkItem:
             requirement=requirement,
             autonomy_dial=autonomy_dial,
             project_id=project_id,
+            base_branch=base_branch,
             created_at=now,
             updated_at=now,
         )

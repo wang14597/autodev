@@ -141,6 +141,41 @@ def test_project_id_defaults_to_none_when_absent():
     assert got.project_id is None
 
 
+def test_base_branch_roundtrips_when_set(tmp_path):
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("repo-a"),
+        Requirement("fix typo", "repo-a", (), "raw"),
+        AutonomyDial.all_human(),
+        NOW,
+        base_branch="develop",
+    )
+    repo.save(wi)
+    got = repo.get(wi.id)
+    assert got.base_branch == "develop"
+
+
+def test_base_branch_defaults_to_none_when_absent():
+    # 未指定 base_branch 的旧数据(缺该键)往返仍为 None。
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("repo-a"),
+        Requirement("fix typo", "repo-a", (), "raw"),
+        AutonomyDial.all_human(),
+        NOW,
+    )
+    assert wi.base_branch is None
+
+    from autodev.adapters.sqlite_repository import _from_dict, _to_dict
+
+    d = _to_dict(wi)
+    assert d["base_branch"] is None
+    del d["base_branch"]  # 模拟旧数据缺失该键
+    got = _from_dict(d)
+    assert got.base_branch is None
+
+
 def _sqlite_repo(tmp_path):
     return SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
 

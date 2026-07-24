@@ -28,7 +28,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 class ConsoleService(Protocol):
     """`ProjectConsoleService` 的最小结构化契约, 供路由依赖注入使用。"""
 
-    def create_project(self, name: str, repo_input: str) -> str: ...
+    def create_project(self, name: str, repo_input: str, branch: str = "") -> str: ...
 
     def list_projects(self) -> list[tuple[Project, int]]: ...
 
@@ -48,6 +48,7 @@ class ConsoleService(Protocol):
 class CreateProjectRequest(BaseModel):
     name: str
     repo: str
+    branch: str = ""
 
 
 class CreateWorkItemRequest(BaseModel):
@@ -75,7 +76,7 @@ def create_app(service: ConsoleService) -> FastAPI:
     @app.post("/api/projects")
     def create_project(payload: CreateProjectRequest) -> dict[str, str]:
         try:
-            project_id = service.create_project(payload.name, payload.repo)
+            project_id = service.create_project(payload.name, payload.repo, payload.branch)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"id": project_id}
@@ -90,10 +91,10 @@ def create_app(service: ConsoleService) -> FastAPI:
     @app.post("/api/projects/{project_id}/refresh")
     def refresh_project(project_id: str) -> dict[str, str]:
         try:
-            default_branch = service.refresh_project(project_id)
+            branch = service.refresh_project(project_id)
         except LookupError as e:
             raise HTTPException(status_code=404, detail="project not found") from e
-        return {"default_branch": default_branch}
+        return {"branch": branch}
 
     @app.delete("/api/projects/{project_id}")
     def delete_project(project_id: str) -> dict[str, bool]:

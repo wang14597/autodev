@@ -17,7 +17,7 @@ NOW = datetime(2026, 7, 24, 9, 0, 0)
 
 
 def _project(name: str = "demo", repo_source: str | None = None) -> Project:
-    p = Project.create(ProjectId.new(), name, repo_source or f"git@host:team/{name}.git", NOW)
+    p = Project.create(ProjectId.new(), name, repo_source or f"git@host:team/{name}.git", "", NOW)
     p.mark_prepared("main", NOW)
     return p
 
@@ -61,7 +61,7 @@ class FakeProjectConsoleService:
             if wi.project_id is not None and wi.project_id.value == project_id
         )
 
-    def create_project(self, name: str, repo_input: str) -> str:
+    def create_project(self, name: str, repo_input: str, branch: str = "") -> str:
         if not name or not name.strip():
             raise ValueError("name must not be empty")
         if not repo_input or not repo_input.strip():
@@ -69,6 +69,8 @@ class FakeProjectConsoleService:
         if any(p.name == name for p in self._projects.values()):
             raise ValueError("项目名已存在")
         p = _project(name, repo_input)
+        if branch:
+            p.mark_prepared(branch, NOW)
         self._projects[p.id.value] = p
         return p.id.value
 
@@ -138,7 +140,7 @@ def test_get_projects_returns_list_with_counts() -> None:
             "id": p1.id.value,
             "name": "demo1",
             "repo_source": "git@host:team/demo1.git",
-            "default_branch": "main",
+            "branch": "main",
             "workitem_count": 1,
             "created_at": NOW.isoformat(),
         },
@@ -146,7 +148,7 @@ def test_get_projects_returns_list_with_counts() -> None:
             "id": p2.id.value,
             "name": "demo2",
             "repo_source": "git@host:team/demo2.git",
-            "default_branch": "main",
+            "branch": "main",
             "workitem_count": 0,
             "created_at": NOW.isoformat(),
         },
@@ -161,6 +163,20 @@ def test_post_projects_returns_id() -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert isinstance(body["id"], str) and body["id"]
+
+
+def test_post_projects_accepts_explicit_branch() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.post(
+        "/api/projects",
+        json={"name": "demo", "repo": "git@host:team/demo.git", "branch": "feature/x"},
+    )
+
+    assert resp.status_code == 200
+    project_id = resp.json()["id"]
+    detail = client.get(f"/api/projects/{project_id}").json()
+    assert detail["branch"] == "feature/x"
 
 
 def test_post_projects_rejects_empty_name_or_repo() -> None:
@@ -192,6 +208,7 @@ def test_get_project_detail_shape() -> None:
     body = resp.json()
     assert body["id"] == p.id.value
     assert body["name"] == "demo"
+    assert body["branch"] == "main"
     assert body["workitem_count"] == 1
     assert isinstance(body["workitems"], list)
     assert body["workitems"][0]["id"] == wi.id.value
@@ -206,14 +223,14 @@ def test_get_project_unknown_returns_404() -> None:
     assert resp.json() == {"detail": "project not found"}
 
 
-def test_post_project_refresh_returns_default_branch() -> None:
+def test_post_project_refresh_returns_branch() -> None:
     p = _project("demo")
     client = _client(FakeProjectConsoleService([p]))
 
     resp = client.post(f"/api/projects/{p.id.value}/refresh")
 
     assert resp.status_code == 200
-    assert resp.json() == {"default_branch": "develop"}
+    assert resp.json() == {"branch": "develop"}
 
 
 def test_post_project_refresh_unknown_returns_404() -> None:

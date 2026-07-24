@@ -45,7 +45,7 @@ export interface Project {
   id: string
   name: string
   repo_source: string
-  default_branch: string | null
+  branch: string
   workitem_count: number
   created_at: string | null
 }

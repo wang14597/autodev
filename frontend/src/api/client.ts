@@ -41,10 +41,14 @@ export function getProjects(): Promise<Project[]> {
   return request<Project[]>('/api/projects')
 }
 
-export function createProject(name: string, repo: string): Promise<{ id: string }> {
+export function createProject(
+  name: string,
+  repo: string,
+  branch?: string,
+): Promise<{ id: string }> {
   return request<{ id: string }>('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({ name, repo }),
+    body: JSON.stringify({ name, repo, branch: branch ?? '' }),
   })
 }
 
@@ -52,11 +56,10 @@ export function getProject(id: string): Promise<ProjectDetail> {
   return request<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}`)
 }
 
-export function refreshProject(id: string): Promise<{ default_branch: string | null }> {
-  return request<{ default_branch: string | null }>(
-    `/api/projects/${encodeURIComponent(id)}/refresh`,
-    { method: 'POST' },
-  )
+export function refreshProject(id: string): Promise<{ branch: string }> {
+  return request<{ branch: string }>(`/api/projects/${encodeURIComponent(id)}/refresh`, {
+    method: 'POST',
+  })
 }
 
 export async function deleteProject(id: string): Promise<void> {

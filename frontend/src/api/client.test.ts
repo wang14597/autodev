@@ -34,7 +34,7 @@ describe('api/client', () => {
         id: 'p-1',
         name: 'demo',
         repo_source: '/repos/demo',
-        default_branch: 'main',
+        branch: 'main',
         workitem_count: 3,
         created_at: '2026-07-22T09:00:00',
       },
@@ -49,19 +49,37 @@ describe('api/client', () => {
     expect(init?.method ?? 'GET').toBe('GET')
   })
 
-  it('createProject POSTs name/repo as JSON and returns {id}', async () => {
+  it('createProject POSTs name/repo/branch as JSON and returns {id}', async () => {
     const mock = vi.mocked(fetch)
     mock.mockResolvedValueOnce(jsonResponse({ id: 'p-2' }))
 
-    const result = await createProject('demo', '/repos/demo')
+    const result = await createProject('demo', '/repos/demo', 'develop')
 
     expect(result).toEqual({ id: 'p-2' })
     const [url, init] = mock.mock.calls[0]
     expect(url).toBe('/api/projects')
     expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toEqual({ name: 'demo', repo: '/repos/demo' })
+    expect(JSON.parse(init?.body as string)).toEqual({
+      name: 'demo',
+      repo: '/repos/demo',
+      branch: 'develop',
+    })
     const headers = (init?.headers ?? {}) as Record<string, string>
     expect(headers['Content-Type']).toBe('application/json')
+  })
+
+  it('createProject defaults branch to an empty string when omitted', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ id: 'p-3' }))
+
+    await createProject('demo', '/repos/demo')
+
+    const [, init] = mock.mock.calls[0]
+    expect(JSON.parse(init?.body as string)).toEqual({
+      name: 'demo',
+      repo: '/repos/demo',
+      branch: '',
+    })
   })
 
   it('getProject calls GET /api/projects/{id} and returns ProjectDetail', async () => {
@@ -71,7 +89,7 @@ describe('api/client', () => {
         id: 'p-1',
         name: 'demo',
         repo_source: '/repos/demo',
-        default_branch: 'main',
+        branch: 'main',
         workitem_count: 1,
         created_at: null,
         workitems: [],
@@ -84,13 +102,13 @@ describe('api/client', () => {
     expect(result.workitems).toEqual([])
   })
 
-  it('refreshProject POSTs to /api/projects/{id}/refresh and returns {default_branch}', async () => {
+  it('refreshProject POSTs to /api/projects/{id}/refresh and returns {branch}', async () => {
     const mock = vi.mocked(fetch)
-    mock.mockResolvedValueOnce(jsonResponse({ default_branch: 'main' }))
+    mock.mockResolvedValueOnce(jsonResponse({ branch: 'main' }))
 
     const result = await refreshProject('p-1')
 
-    expect(result).toEqual({ default_branch: 'main' })
+    expect(result).toEqual({ branch: 'main' })
     const [url, init] = mock.mock.calls[0]
     expect(url).toBe('/api/projects/p-1/refresh')
     expect(init?.method).toBe('POST')

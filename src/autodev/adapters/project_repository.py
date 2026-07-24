@@ -97,7 +97,7 @@ def _to_dict(p: Project) -> dict:
         "id": p.id.value,
         "name": p.name,
         "repo_source": p.repo_source,
-        "default_branch": p.default_branch,
+        "branch": p.branch,
         "autonomy_dial": [[t.name, r, g.name] for (t, r, g) in p.autonomy_dial.auto_gates],
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -109,7 +109,8 @@ def _from_dict(d: dict) -> Project:
         id=ProjectId(d["id"]),
         name=d["name"],
         repo_source=d["repo_source"],
-        default_branch=d.get("default_branch"),
+        # 兼容旧数据(字段曾名 default_branch): 新字段缺失时退回旧键。
+        branch=d.get("branch") or d.get("default_branch") or "",
         autonomy_dial=AutonomyDial(
             frozenset((TaskType[t], r, GatePoint[g]) for (t, r, g) in d["autonomy_dial"])
         ),
