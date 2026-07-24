@@ -53,7 +53,7 @@ describe('ProjectHeader', () => {
 
     expect(screen.getByText('demo')).toBeInTheDocument()
     expect(screen.getByText('/repos/demo')).toBeInTheDocument()
-    expect(screen.getByText('跟踪分支 main')).toBeInTheDocument()
+    expect(screen.getByText('默认分支 main')).toBeInTheDocument()
   })
 
   it('calls refreshProject when the refresh button is clicked', async () => {

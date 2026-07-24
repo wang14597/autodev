@@ -61,7 +61,7 @@ describe('NewProjectForm', () => {
 
     await user.type(screen.getByLabelText('项目名'), 'demo')
     await user.type(screen.getByLabelText('仓库地址或本地 git 路径'), '/repos/demo')
-    await user.type(screen.getByLabelText('分支'), ' develop ')
+    await user.type(screen.getByLabelText('默认分支'), ' develop ')
     await user.click(screen.getByRole('button', { name: '创建项目' }))
 
     expect(client.createProject).toHaveBeenCalledWith('demo', '/repos/demo', 'develop')

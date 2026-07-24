@@ -28,7 +28,7 @@ export function ProjectHeader({ project }: { project: Project }) {
           <p className={styles.name}>{project.name}</p>
           <p className={styles.meta}>
             <span className={styles.repo}>{project.repo_source}</span>
-            <span className={styles.branch}>跟踪分支 {project.branch}</span>
+            <span className={styles.branch}>默认分支 {project.branch}</span>
           </p>
         </div>
         <div className={styles.actions}>
