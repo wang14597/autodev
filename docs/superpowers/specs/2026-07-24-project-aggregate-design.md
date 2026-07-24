@@ -14,8 +14,8 @@
 ## 2. 领域层
 
 ### 2.1 Project 聚合（新增 `src/autodev/domain/project.py`）
-- `ProjectId`（`src/autodev/domain/ids.py` 增，仿 WorkItemId：`.value` hex、`.new()`）。
-- `Project`（dataclass 聚合根）：
+- ProjectId（`src/autodev/domain/ids.py` 增，仿 WorkItemId：`.value` hex、`.new()`）。
+- Project（dataclass 聚合根）：
   - `id: ProjectId`
   - `name: str`（人类可读，唯一性由应用层保证）
   - `repo_source: str`（仓库来源：远程 URL / 本地 `worktree:` 标记 / 裸路径——沿用现 repo_map 值语义）
@@ -26,7 +26,7 @@
 - 不承载 git 内部就绪状态（镜像是否 fetch 等）——那是 F1 基础设施缓存，按 repo 名共享。
 
 ### 2.2 端口（`src/autodev/domain/ports.py`）
-- 新增 `ProjectRepository`(Protocol)：`save/get/get_by_name/list_all/delete`。
+- 新增 ProjectRepository(Protocol)：`save/get/get_by_name/list_all/delete`。
 - `WorkItemRepository` 增 `delete(work_item_id)`（供删除项目时级联移除其工作项；additive，仿 list_all）。
 - `WorkspacePort` 增 `prepare(repo: RepoRef) -> str`：一次性把仓库准备好并返回默认分支名（远程：建/刷新镜像 + set-head；本地 worktree：校验 + 读 HEAD 分支）。幂等。
 
@@ -48,7 +48,7 @@
 
 ## 4. 应用层 / 服务
 
-`ProjectConsoleService`（webapp，替代/扩展现 WorkItemConsoleService）：
+ProjectConsoleService（webapp，替代/扩展现 WorkItemConsoleService）：
 - `create_project(name, repo_input) -> project_id`：校验非空/重名；用 ProjectRegistry 解析 repo_input（本地路径→worktree 标记登记）；`WorkspacePort.prepare` 一次性 setup；`Project.create` + `mark_prepared`；持久化。
 - `list_projects() -> [Project + workitem 计数]`。
 - `get_project(id) -> Project`。
@@ -60,8 +60,8 @@
 
 ## 5. 持久化
 
-- `SqliteProjectRepository`（新）：projects 表（id/name/data JSON），save/get/get_by_name/list_all；WAL+busy_timeout。
-- `InMemoryProjectRepository`（测试）。
+- SqliteProjectRepository（新）：projects 表（id/name/data JSON），save/get/get_by_name/list_all；WAL+busy_timeout。
+- InMemoryProjectRepository（测试）。
 - WorkItem 序列化增 `project_id`（`_to_dict/_from_dict` 容忍缺失→None）。
 - SQLite work_items 查询按 project_id 过滤：`list_workitems(project_id)` 在 service 层过滤 `repo.list_all()`（或加索引查询，先过滤即可）。
 
