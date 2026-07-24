@@ -17,7 +17,7 @@ from autodev.domain.artifacts import (
     VerificationArtifact,
 )
 from autodev.domain.enums import GatePoint, TaskType, WorkflowState, WorkspaceMode
-from autodev.domain.ids import WorkItemId
+from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.value_objects import (
     AutonomyDial,
     Cost,
@@ -95,6 +95,7 @@ def _to_dict(wi: WorkItem) -> dict:
         },
         "autonomy_dial": [[t.name, r, g.name] for (t, r, g) in wi.autonomy_dial.auto_gates],
         "type": wi.type.name if wi.type else None,
+        "project_id": wi.project_id.value if wi.project_id else None,
         "state": wi.state.name,
         "artifact_versions": {
             k: [_artifact_to_dict(a) for a in versions]
@@ -125,6 +126,7 @@ def _from_dict(d: dict) -> WorkItem:
             frozenset((TaskType[t], r, GatePoint[g]) for (t, r, g) in d["autonomy_dial"])
         ),
         type=TaskType[d["type"]] if d["type"] else None,
+        project_id=ProjectId(d["project_id"]) if d.get("project_id") else None,
         state=WorkflowState[d["state"]],
         artifact_versions={
             k: [_artifact_from_dict(a) for a in versions]
