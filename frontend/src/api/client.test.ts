@@ -1,5 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createWorkItem, getProjects, getWorkItem, listWorkItems } from './client'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { vi } from 'vitest'
+import {
+  ApiError,
+  createProject,
+  createWorkItem,
+  deleteProject,
+  getProject,
+  getProjects,
+  getWorkItem,
+  refreshProject,
+} from './client'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -17,25 +27,100 @@ describe('api/client', () => {
     vi.unstubAllGlobals()
   })
 
-  it('getProjects calls GET /api/projects and returns the list', async () => {
+  it('getProjects calls GET /api/projects and returns the Project[] shape', async () => {
     const mock = vi.mocked(fetch)
-    mock.mockResolvedValueOnce(jsonResponse(['demo', 'platform']))
+    const projects = [
+      {
+        id: 'p-1',
+        name: 'demo',
+        repo_source: '/repos/demo',
+        default_branch: 'main',
+        workitem_count: 3,
+        created_at: '2026-07-22T09:00:00',
+      },
+    ]
+    mock.mockResolvedValueOnce(jsonResponse(projects))
 
     const result = await getProjects()
 
-    expect(result).toEqual(['demo', 'platform'])
+    expect(result).toEqual(projects)
     const [url, init] = mock.mock.calls[0]
     expect(url).toBe('/api/projects')
     expect(init?.method ?? 'GET').toBe('GET')
   })
 
-  it('listWorkItems calls GET /api/workitems', async () => {
+  it('createProject POSTs name/repo as JSON and returns {id}', async () => {
     const mock = vi.mocked(fetch)
-    mock.mockResolvedValueOnce(jsonResponse([]))
+    mock.mockResolvedValueOnce(jsonResponse({ id: 'p-2' }))
 
-    await listWorkItems()
+    const result = await createProject('demo', '/repos/demo')
 
-    expect(mock.mock.calls[0][0]).toBe('/api/workitems')
+    expect(result).toEqual({ id: 'p-2' })
+    const [url, init] = mock.mock.calls[0]
+    expect(url).toBe('/api/projects')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ name: 'demo', repo: '/repos/demo' })
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers['Content-Type']).toBe('application/json')
+  })
+
+  it('getProject calls GET /api/projects/{id} and returns ProjectDetail', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(
+      jsonResponse({
+        id: 'p-1',
+        name: 'demo',
+        repo_source: '/repos/demo',
+        default_branch: 'main',
+        workitem_count: 1,
+        created_at: null,
+        workitems: [],
+      }),
+    )
+
+    const result = await getProject('p-1')
+
+    expect(mock.mock.calls[0][0]).toBe('/api/projects/p-1')
+    expect(result.workitems).toEqual([])
+  })
+
+  it('refreshProject POSTs to /api/projects/{id}/refresh and returns {default_branch}', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ default_branch: 'main' }))
+
+    const result = await refreshProject('p-1')
+
+    expect(result).toEqual({ default_branch: 'main' })
+    const [url, init] = mock.mock.calls[0]
+    expect(url).toBe('/api/projects/p-1/refresh')
+    expect(init?.method).toBe('POST')
+  })
+
+  it('deleteProject DELETEs /api/projects/{id} and resolves to undefined', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ deleted: true }))
+
+    const result = await deleteProject('p-1')
+
+    expect(result).toBeUndefined()
+    const [url, init] = mock.mock.calls[0]
+    expect(url).toBe('/api/projects/p-1')
+    expect(init?.method).toBe('DELETE')
+  })
+
+  it('createWorkItem POSTs goal as JSON to /api/projects/{id}/workitems', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ id: 'wi-2' }))
+
+    const result = await createWorkItem('p-1', '加限流')
+
+    expect(result).toEqual({ id: 'wi-2' })
+    const [url, init] = mock.mock.calls[0]
+    expect(url).toBe('/api/projects/p-1/workitems')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ goal: '加限流' })
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers['Content-Type']).toBe('application/json')
   })
 
   it('getWorkItem calls GET /api/workitems/{id}', async () => {
@@ -61,38 +146,23 @@ describe('api/client', () => {
     expect(result.id).toBe('wi-1')
   })
 
-  it('createWorkItem POSTs goal/repo as JSON and returns {id}', async () => {
-    const mock = vi.mocked(fetch)
-    mock.mockResolvedValueOnce(jsonResponse({ id: 'wi-2' }))
-
-    const result = await createWorkItem('加限流', 'demo')
-
-    expect(result).toEqual({ id: 'wi-2' })
-    const [url, init] = mock.mock.calls[0]
-    expect(url).toBe('/api/workitems')
-    expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toEqual({ goal: '加限流', repo: 'demo' })
-    const headers = (init?.headers ?? {}) as Record<string, string>
-    expect(headers['Content-Type']).toBe('application/json')
-  })
-
   it('throws ApiError with status and detail on non-2xx responses', async () => {
     const mock = vi.mocked(fetch)
-    mock.mockResolvedValueOnce(jsonResponse({ detail: '需求和项目都要填。' }, 400))
+    mock.mockResolvedValueOnce(jsonResponse({ detail: '项目名和仓库都要填。' }, 400))
 
-    await expect(createWorkItem('', '')).rejects.toMatchObject(
-      new ApiError(400, '需求和项目都要填。'),
+    await expect(createProject('', '')).rejects.toMatchObject(
+      new ApiError(400, '项目名和仓库都要填。'),
     )
   })
 
-  it('throws ApiError with status 404 for missing work items', async () => {
+  it('throws ApiError with status 404 for an unknown project', async () => {
     const mock = vi.mocked(fetch)
-    mock.mockResolvedValueOnce(jsonResponse({ detail: 'work item not found' }, 404))
+    mock.mockResolvedValueOnce(jsonResponse({ detail: 'project not found' }, 404))
 
-    await expect(getWorkItem('nope')).rejects.toMatchObject({
+    await expect(getProject('nope')).rejects.toMatchObject({
       name: 'ApiError',
       status: 404,
-      detail: 'work item not found',
+      detail: 'project not found',
     })
   })
 })

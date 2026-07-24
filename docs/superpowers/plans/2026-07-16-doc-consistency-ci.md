@@ -161,7 +161,7 @@ def test_internal_and_broken_links(tmp_path):
     assert broken_links(md, text) == ["missing.md"]
 
 def test_parse_facts():
-    assert parse_facts("<!-- fact:states -->12 and <!-- fact:ports -->`9`") == {"states": 12, "ports": 9}
+    assert parse_facts("<!-- fact:states -->12 and <!-- fact:ports -->`10`") == {"states": 12, "ports": 10}
 
 def test_load_allowlist(tmp_path):
     p = tmp_path / "a.txt"

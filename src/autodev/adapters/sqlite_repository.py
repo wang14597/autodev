@@ -17,7 +17,7 @@ from autodev.domain.artifacts import (
     VerificationArtifact,
 )
 from autodev.domain.enums import GatePoint, TaskType, WorkflowState, WorkspaceMode
-from autodev.domain.ids import WorkItemId
+from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.value_objects import (
     AutonomyDial,
     Cost,
@@ -79,6 +79,10 @@ class SqliteWorkItemRepository:
             rows = c.execute("SELECT data FROM work_items").fetchall()
         return [_from_dict(json.loads(r[0])) for r in rows]
 
+    def delete(self, work_item_id: WorkItemId) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM work_items WHERE id=?", (work_item_id.value,))
+
 
 # ---------- 序列化（领域 ↔ dict），核心不感知 ----------
 
@@ -95,6 +99,7 @@ def _to_dict(wi: WorkItem) -> dict:
         },
         "autonomy_dial": [[t.name, r, g.name] for (t, r, g) in wi.autonomy_dial.auto_gates],
         "type": wi.type.name if wi.type else None,
+        "project_id": wi.project_id.value if wi.project_id else None,
         "state": wi.state.name,
         "artifact_versions": {
             k: [_artifact_to_dict(a) for a in versions]
@@ -125,6 +130,7 @@ def _from_dict(d: dict) -> WorkItem:
             frozenset((TaskType[t], r, GatePoint[g]) for (t, r, g) in d["autonomy_dial"])
         ),
         type=TaskType[d["type"]] if d["type"] else None,
+        project_id=ProjectId(d["project_id"]) if d.get("project_id") else None,
         state=WorkflowState[d["state"]],
         artifact_versions={
             k: [_artifact_from_dict(a) for a in versions]

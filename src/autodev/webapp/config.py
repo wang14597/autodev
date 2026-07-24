@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from autodev.adapters.claude_runner import ClaudeCodeRunner
 from autodev.adapters.context_claude import ClaudeContextAdapter
 from autodev.adapters.event_bus import InMemoryEventBus
+from autodev.adapters.project_repository import SqliteProjectRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
 from autodev.adapters.workspace_git import GitWorkspaceAdapter, GitWorkspaceConfig
 from autodev.application.context import StageContext
@@ -26,7 +27,7 @@ from autodev.application.engine import Engine
 from autodev.domain.policies import GatePolicy, TriagePolicy
 from autodev.webapp.app import create_app
 from autodev.webapp.projects import load_registry
-from autodev.webapp.service import WorkItemConsoleService
+from autodev.webapp.service import ProjectConsoleService
 from autodev.webapp.stubs import UnavailableStage
 
 
@@ -64,6 +65,7 @@ def build_app_from_env() -> FastAPI:
     workspaces_dir = Path(os.environ.get("AUTODEV_WORKSPACES_DIR", str(home / "workspaces")))
 
     repo = SqliteWorkItemRepository(str(home / "console.sqlite3"))
+    project_repo = SqliteProjectRepository(str(home / "projects.sqlite3"))
     publisher = InMemoryEventBus()
 
     # 与登记表共享同一个 repo_map dict, 运行时新增的本地项目对 F1 立即生效。
@@ -87,6 +89,6 @@ def build_app_from_env() -> FastAPI:
     )
     engine = Engine(repo, publisher, ctx, clock=lambda: datetime.now(UTC))
     executor = ThreadPoolExecutorAdapter()
-    service = WorkItemConsoleService(repo, engine, executor, resolve_project=registry.resolve)
+    service = ProjectConsoleService(project_repo, repo, workspace, engine, executor, registry)
 
-    return create_app(service, projects=registry.names)
+    return create_app(service)

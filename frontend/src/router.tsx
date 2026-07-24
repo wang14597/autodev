@@ -1,15 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom'
-import { DashboardPage } from './pages/DashboardPage'
-import { StagePlaceholder } from './pages/StagePlaceholder'
+import { ProjectDetailPage } from './pages/ProjectDetailPage'
+import { ProjectsPage } from './pages/ProjectsPage'
 import { WorkItemDetailPage } from './pages/WorkItemDetailPage'
 
 export const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <DashboardPage />,
-    children: [
-      { index: true, element: <StagePlaceholder /> },
-      { path: 'workitems/:id', element: <WorkItemDetailPage /> },
-    ],
-  },
+  { path: '/', element: <ProjectsPage /> },
+  { path: '/projects/:pid', element: <ProjectDetailPage /> },
+  { path: '/projects/:pid/workitems/:id', element: <WorkItemDetailPage /> },
 ])

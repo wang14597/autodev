@@ -1,5 +1,5 @@
 # src/autodev/webapp/app.py
-"""FastAPI 驱动侧适配器：WorkItem 控制台 HTTP 路由 + 前端产物托管(SPA 回退)。
+"""FastAPI 驱动侧适配器：项目为中心的控制台 HTTP 路由 + 前端产物托管(SPA 回退)。
 
 路由分两层：
 - `/api/*`：JSON API，全部在 catch-all 之前注册，永不被其遮蔽。
@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -19,25 +18,40 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
-from autodev.webapp.views import view_detail, view_summary
+from autodev.webapp.views import view_detail, view_project, view_project_detail
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class ConsoleService(Protocol):
-    """`WorkItemConsoleService` 的最小结构化契约, 供路由依赖注入使用。"""
+    """`ProjectConsoleService` 的最小结构化契约, 供路由依赖注入使用。"""
 
-    def create(self, goal: str, repo: str) -> str: ...
+    def create_project(self, name: str, repo_input: str) -> str: ...
 
-    def get(self, work_item_id: str) -> WorkItem | None: ...
+    def list_projects(self) -> list[tuple[Project, int]]: ...
 
-    def list(self) -> list[WorkItem]: ...
+    def get_project(self, project_id: str) -> Project | None: ...
+
+    def refresh_project(self, project_id: str) -> str: ...
+
+    def delete_project(self, project_id: str) -> bool: ...
+
+    def create_workitem(self, project_id: str, goal: str) -> str: ...
+
+    def list_workitems(self, project_id: str) -> list[WorkItem]: ...
+
+    def get_workitem(self, work_item_id: str) -> WorkItem | None: ...
+
+
+class CreateProjectRequest(BaseModel):
+    name: str
+    repo: str
 
 
 class CreateWorkItemRequest(BaseModel):
     goal: str
-    repo: str
 
 
 def _frontend_dist() -> Path | None:
@@ -51,32 +65,55 @@ def _read_text(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def create_app(
-    service: ConsoleService,
-    projects: list[str] | Callable[[], list[str]],
-) -> FastAPI:
-    app = FastAPI(title="AutoDev WorkItem 控制台")
+def create_app(service: ConsoleService) -> FastAPI:
+    app = FastAPI(title="AutoDev 项目控制台")
 
     @app.get("/api/projects")
-    def get_projects() -> list[str]:
-        # projects 可为静态列表或 provider(登记表运行时会新增本地项目, 故用 provider 取最新)。
-        return projects() if callable(projects) else projects
+    def get_projects() -> list[dict[str, object]]:
+        return [view_project(p, count) for (p, count) in service.list_projects()]
 
-    @app.post("/api/workitems")
-    def create_workitem(payload: CreateWorkItemRequest) -> dict[str, str]:
+    @app.post("/api/projects")
+    def create_project(payload: CreateProjectRequest) -> dict[str, str]:
         try:
-            work_item_id = service.create(payload.goal, payload.repo)
+            project_id = service.create_project(payload.name, payload.repo)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return {"id": work_item_id}
+        return {"id": project_id}
 
-    @app.get("/api/workitems")
-    def list_workitems() -> list[dict[str, object]]:
-        return [view_summary(wi) for wi in service.list()]
+    @app.get("/api/projects/{project_id}")
+    def get_project(project_id: str) -> dict[str, object]:
+        project = service.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="project not found")
+        return view_project_detail(project, service.list_workitems(project_id))
+
+    @app.post("/api/projects/{project_id}/refresh")
+    def refresh_project(project_id: str) -> dict[str, str]:
+        try:
+            default_branch = service.refresh_project(project_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail="project not found") from e
+        return {"default_branch": default_branch}
+
+    @app.delete("/api/projects/{project_id}")
+    def delete_project(project_id: str) -> dict[str, bool]:
+        if not service.delete_project(project_id):
+            raise HTTPException(status_code=404, detail="project not found")
+        return {"deleted": True}
+
+    @app.post("/api/projects/{project_id}/workitems")
+    def create_workitem(project_id: str, payload: CreateWorkItemRequest) -> dict[str, str]:
+        try:
+            work_item_id = service.create_workitem(project_id, payload.goal)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail="project not found") from e
+        return {"id": work_item_id}
 
     @app.get("/api/workitems/{work_item_id}")
     def get_workitem(work_item_id: str) -> dict[str, object]:
-        wi = service.get(work_item_id)
+        wi = service.get_workitem(work_item_id)
         if wi is None:
             raise HTTPException(status_code=404, detail="work item not found")
         return view_detail(wi, _read_text)

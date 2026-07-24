@@ -40,3 +40,16 @@ export interface WorkItemDetail extends WorkItemSummary {
   context: { markdown: string; context_file: string } | null
   failure: { reason: string } | null
 }
+
+export interface Project {
+  id: string
+  name: string
+  repo_source: string
+  default_branch: string | null
+  workitem_count: number
+  created_at: string | null
+}
+
+export interface ProjectDetail extends Project {
+  workitems: WorkItemSummary[]
+}

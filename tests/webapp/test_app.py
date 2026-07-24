@@ -7,21 +7,29 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.ids import WorkItemId
+from autodev.domain.ids import ProjectId, WorkItemId
+from autodev.domain.project import Project
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
 from autodev.webapp.app import create_app
 
-NOW = datetime(2026, 7, 22, 9, 0, 0)
+NOW = datetime(2026, 7, 24, 9, 0, 0)
 
 
-def _work_item(goal: str = "加限流", repo: str = "demo", state: S = S.INTAKE) -> WorkItem:
+def _project(name: str = "demo", repo_source: str | None = None) -> Project:
+    p = Project.create(ProjectId.new(), name, repo_source or f"git@host:team/{name}.git", NOW)
+    p.mark_prepared("main", NOW)
+    return p
+
+
+def _work_item(project: Project, goal: str = "加限流", state: S = S.INTAKE) -> WorkItem:
     wi = WorkItem.create(
         WorkItemId.new(),
-        RepoRef(repo),
-        Requirement(goal, repo, (), goal),
+        RepoRef(project.name),
+        Requirement(goal, project.name, (), goal),
         AutonomyDial.all_human(),
         NOW,
+        project_id=project.id,
     )
     if state is not S.INTAKE:
         wi.transition_to(S.TRIAGE, "stage ok", NOW)
@@ -32,88 +40,240 @@ def _work_item(goal: str = "加限流", repo: str = "demo", state: S = S.INTAKE)
     return wi
 
 
-class FakeConsoleService:
+class FakeProjectConsoleService:
     """结构上匹配 `autodev.webapp.app.ConsoleService`, 但不驱动引擎: 直接持有真实
-    WorkItem 实例, 好让路由里调用的真实 `view_summary`/`view_detail` 照常工作。
+    Project/WorkItem 实例, 好让路由里调用的真实 view_project/view_project_detail/
+    view_detail 照常工作。
     """
 
-    def __init__(self, items: list[WorkItem] | None = None) -> None:
-        self._items: dict[str, WorkItem] = {wi.id.value: wi for wi in (items or [])}
+    def __init__(
+        self,
+        projects: list[Project] | None = None,
+        workitems: list[WorkItem] | None = None,
+    ) -> None:
+        self._projects: dict[str, Project] = {p.id.value: p for p in (projects or [])}
+        self._workitems: dict[str, WorkItem] = {wi.id.value: wi for wi in (workitems or [])}
 
-    def create(self, goal: str, repo: str) -> str:
+    def _count(self, project_id: str) -> int:
+        return sum(
+            1
+            for wi in self._workitems.values()
+            if wi.project_id is not None and wi.project_id.value == project_id
+        )
+
+    def create_project(self, name: str, repo_input: str) -> str:
+        if not name or not name.strip():
+            raise ValueError("name must not be empty")
+        if not repo_input or not repo_input.strip():
+            raise ValueError("repo_input must not be empty")
+        if any(p.name == name for p in self._projects.values()):
+            raise ValueError("项目名已存在")
+        p = _project(name, repo_input)
+        self._projects[p.id.value] = p
+        return p.id.value
+
+    def list_projects(self) -> list[tuple[Project, int]]:
+        return [(p, self._count(p.id.value)) for p in self._projects.values()]
+
+    def get_project(self, project_id: str) -> Project | None:
+        return self._projects.get(project_id)
+
+    def refresh_project(self, project_id: str) -> str:
+        p = self._projects.get(project_id)
+        if p is None:
+            raise LookupError(project_id)
+        p.mark_prepared("develop", NOW)
+        return "develop"
+
+    def delete_project(self, project_id: str) -> bool:
+        p = self._projects.pop(project_id, None)
+        if p is None:
+            return False
+        for wid in [
+            wid
+            for wid, wi in self._workitems.items()
+            if wi.project_id is not None and wi.project_id.value == project_id
+        ]:
+            del self._workitems[wid]
+        return True
+
+    def create_workitem(self, project_id: str, goal: str) -> str:
         if not goal or not goal.strip():
             raise ValueError("goal must not be empty")
-        if not repo or not repo.strip():
-            raise ValueError("repo must not be empty")
-        wi = _work_item(goal, repo)
-        self._items[wi.id.value] = wi
+        p = self._projects.get(project_id)
+        if p is None:
+            raise LookupError(project_id)
+        wi = _work_item(p, goal)
+        self._workitems[wi.id.value] = wi
         return wi.id.value
 
-    def get(self, work_item_id: str) -> WorkItem | None:
-        return self._items.get(work_item_id)
+    def list_workitems(self, project_id: str) -> list[WorkItem]:
+        return [
+            wi
+            for wi in self._workitems.values()
+            if wi.project_id is not None and wi.project_id.value == project_id
+        ]
 
-    def list(self) -> list[WorkItem]:
-        return list(self._items.values())
+    def get_workitem(self, work_item_id: str) -> WorkItem | None:
+        return self._workitems.get(work_item_id)
 
 
-def _client(service: FakeConsoleService, projects: list[str] | None = None) -> TestClient:
-    app = create_app(service, projects=projects if projects is not None else ["demo", "other"])
+def _client(service: FakeProjectConsoleService) -> TestClient:
+    app = create_app(service)
     return TestClient(app)
 
 
-def test_get_projects_returns_configured_list() -> None:
-    client = _client(FakeConsoleService(), projects=["alpha", "beta"])
+def test_get_projects_returns_list_with_counts() -> None:
+    p1 = _project("demo1")
+    p2 = _project("demo2")
+    wi = _work_item(p1)
+    client = _client(FakeProjectConsoleService([p1, p2], [wi]))
 
     resp = client.get("/api/projects")
 
     assert resp.status_code == 200
-    assert resp.json() == ["alpha", "beta"]
+    body = resp.json()
+    assert body == [
+        {
+            "id": p1.id.value,
+            "name": "demo1",
+            "repo_source": "git@host:team/demo1.git",
+            "default_branch": "main",
+            "workitem_count": 1,
+            "created_at": NOW.isoformat(),
+        },
+        {
+            "id": p2.id.value,
+            "name": "demo2",
+            "repo_source": "git@host:team/demo2.git",
+            "default_branch": "main",
+            "workitem_count": 0,
+            "created_at": NOW.isoformat(),
+        },
+    ]
 
 
-def test_post_workitems_returns_id() -> None:
-    client = _client(FakeConsoleService())
+def test_post_projects_returns_id() -> None:
+    client = _client(FakeProjectConsoleService())
 
-    resp = client.post("/api/workitems", json={"goal": "加限流", "repo": "demo"})
+    resp = client.post("/api/projects", json={"name": "demo", "repo": "git@host:team/demo.git"})
 
     assert resp.status_code == 200
     body = resp.json()
     assert isinstance(body["id"], str) and body["id"]
 
 
-def test_post_workitems_rejects_empty_goal_or_repo() -> None:
-    client = _client(FakeConsoleService())
+def test_post_projects_rejects_empty_name_or_repo() -> None:
+    client = _client(FakeProjectConsoleService())
 
-    resp = client.post("/api/workitems", json={"goal": "", "repo": "demo"})
+    resp = client.post("/api/projects", json={"name": "", "repo": "git@host:team/demo.git"})
     assert resp.status_code == 400
 
-    resp = client.post("/api/workitems", json={"goal": "加限流", "repo": ""})
+    resp = client.post("/api/projects", json={"name": "demo", "repo": ""})
     assert resp.status_code == 400
 
 
-def test_list_workitems_returns_summaries() -> None:
-    wi = _work_item(state=S.CONTEXT)
-    client = _client(FakeConsoleService([wi]))
+def test_post_projects_rejects_duplicate_name() -> None:
+    client = _client(FakeProjectConsoleService([_project("demo")]))
 
-    resp = client.get("/api/workitems")
+    resp = client.post("/api/projects", json={"name": "demo", "repo": "git@host:team/demo.git"})
+
+    assert resp.status_code == 400
+
+
+def test_get_project_detail_shape() -> None:
+    p = _project("demo")
+    wi = _work_item(p, state=S.CONTEXT)
+    client = _client(FakeProjectConsoleService([p], [wi]))
+
+    resp = client.get(f"/api/projects/{p.id.value}")
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body == [
-        {
-            "id": wi.id.value,
-            "goal": "加限流",
-            "repo": "demo",
-            "type": None,
-            "state": "CONTEXT",
-            "created_at": NOW.isoformat(),
-            "updated_at": NOW.isoformat(),
-        }
-    ]
+    assert body["id"] == p.id.value
+    assert body["name"] == "demo"
+    assert body["workitem_count"] == 1
+    assert isinstance(body["workitems"], list)
+    assert body["workitems"][0]["id"] == wi.id.value
+
+
+def test_get_project_unknown_returns_404() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.get("/api/projects/does-not-exist")
+
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "project not found"}
+
+
+def test_post_project_refresh_returns_default_branch() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.post(f"/api/projects/{p.id.value}/refresh")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"default_branch": "develop"}
+
+
+def test_post_project_refresh_unknown_returns_404() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.post("/api/projects/does-not-exist/refresh")
+
+    assert resp.status_code == 404
+
+
+def test_delete_project_returns_deleted_true() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.delete(f"/api/projects/{p.id.value}")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": True}
+
+
+def test_delete_project_unknown_returns_404() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.delete("/api/projects/does-not-exist")
+
+    assert resp.status_code == 404
+
+
+def test_post_project_workitems_returns_id() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.post(f"/api/projects/{p.id.value}/workitems", json={"goal": "加限流"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body["id"], str) and body["id"]
+
+
+def test_post_project_workitems_rejects_empty_goal() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.post(f"/api/projects/{p.id.value}/workitems", json={"goal": ""})
+
+    assert resp.status_code == 400
+
+
+def test_post_project_workitems_unknown_project_returns_404() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.post("/api/projects/does-not-exist/workitems", json={"goal": "加限流"})
+
+    assert resp.status_code == 404
 
 
 def test_get_workitem_detail_shape() -> None:
-    wi = _work_item(state=S.CONTEXT)
-    client = _client(FakeConsoleService([wi]))
+    p = _project("demo")
+    wi = _work_item(p, state=S.CONTEXT)
+    client = _client(FakeProjectConsoleService([p], [wi]))
 
     resp = client.get(f"/api/workitems/{wi.id.value}")
 
@@ -127,7 +287,7 @@ def test_get_workitem_detail_shape() -> None:
 
 
 def test_get_workitem_unknown_returns_404() -> None:
-    client = _client(FakeConsoleService())
+    client = _client(FakeProjectConsoleService())
 
     resp = client.get("/api/workitems/does-not-exist")
 
@@ -137,7 +297,7 @@ def test_get_workitem_unknown_returns_404() -> None:
 
 def test_placeholder_page_when_no_frontend_dist(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("AUTODEV_FRONTEND_DIST", str(tmp_path / "does-not-exist"))
-    client = _client(FakeConsoleService())
+    client = _client(FakeProjectConsoleService())
 
     resp = client.get("/")
 
@@ -156,7 +316,7 @@ class TestSpaHosting:
     def test_root_serves_index(self, monkeypatch, tmp_path: Path) -> None:
         dist = self._dist(tmp_path)
         monkeypatch.setenv("AUTODEV_FRONTEND_DIST", str(dist))
-        client = _client(FakeConsoleService())
+        client = _client(FakeProjectConsoleService())
 
         resp = client.get("/")
 
@@ -166,9 +326,9 @@ class TestSpaHosting:
     def test_unknown_route_falls_back_to_index(self, monkeypatch, tmp_path: Path) -> None:
         dist = self._dist(tmp_path)
         monkeypatch.setenv("AUTODEV_FRONTEND_DIST", str(dist))
-        client = _client(FakeConsoleService())
+        client = _client(FakeProjectConsoleService())
 
-        resp = client.get("/workitems/x")
+        resp = client.get("/projects/x")
 
         assert resp.status_code == 200
         assert resp.text == "<html>INDEX</html>"
@@ -176,7 +336,7 @@ class TestSpaHosting:
     def test_asset_file_served(self, monkeypatch, tmp_path: Path) -> None:
         dist = self._dist(tmp_path)
         monkeypatch.setenv("AUTODEV_FRONTEND_DIST", str(dist))
-        client = _client(FakeConsoleService())
+        client = _client(FakeProjectConsoleService())
 
         resp = client.get("/assets/app.js")
 
@@ -186,19 +346,19 @@ class TestSpaHosting:
     def test_api_not_shadowed_by_catch_all(self, monkeypatch, tmp_path: Path) -> None:
         dist = self._dist(tmp_path)
         monkeypatch.setenv("AUTODEV_FRONTEND_DIST", str(dist))
-        client = _client(FakeConsoleService(), projects=["demo"])
+        client = _client(FakeProjectConsoleService([_project("demo")]))
 
         resp = client.get("/api/projects")
 
         assert resp.status_code == 200
-        assert resp.json() == ["demo"]
+        assert len(resp.json()) == 1
 
     def test_path_traversal_never_leaks_outside_file(self, monkeypatch, tmp_path: Path) -> None:
         dist = self._dist(tmp_path)
         secret = tmp_path / "secret.txt"
         secret.write_text("TOP SECRET", encoding="utf-8")
         monkeypatch.setenv("AUTODEV_FRONTEND_DIST", str(dist))
-        client = _client(FakeConsoleService())
+        client = _client(FakeProjectConsoleService())
 
         for path in ("/../secret.txt", "/..%2Fsecret.txt", "/assets/../../secret.txt"):
             resp = client.get(path)

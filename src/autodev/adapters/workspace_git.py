@@ -108,11 +108,10 @@ class GitWorkspaceAdapter:
             return self._git(["-C", str(src), "rev-parse", "HEAD"])
 
     def repo_status(self, repo: RepoRef) -> RepoStatus:
-        if self._local_source(repo.name) is not None:
-            # worktree: 本地仓库确实存在 → 视为本地可用(triage 据此选 REUSE);
-            # provision 对本地仓库走 worktree 快路径, mode 仅名义, 不再探测远程。
+        if self._local_source(repo.name) is not None or self._mirror_path(repo.name).exists():
+            # worktree: 本地仓库确实存在, 或该仓库的 mirror 已建好(已 prepare 过)
+            # → 视为本地可用(triage 据此选 REUSE), 不再发起 ls-remote 探测。
             return RepoStatus(exists_local=True, exists_remote=False)
-        exists_local = self._mirror_path(repo.name).exists()
         exists_remote = False
         url = self._config.repo_map.get(repo.name)
         if url:
@@ -121,7 +120,22 @@ class GitWorkspaceAdapter:
                 exists_remote = True
             except StageError:
                 exists_remote = False
-        return RepoStatus(exists_local=exists_local, exists_remote=exists_remote)
+        return RepoStatus(exists_local=False, exists_remote=exists_remote)
+
+    def prepare(self, repo: RepoRef) -> str:
+        """同项目共享的一次性 setup: 建/刷新 mirror(或定位本地仓库), 返回默认分支。
+
+        幂等: 本地仓库仅重读 HEAD; 远程仓库通过 FETCH 模式复用已存在的 mirror
+        (`_ensure_mirror` 对已存在的 mirror 走 fetch --prune, 不会重新整仓克隆)。
+        """
+        src = self._local_source(repo.name)
+        if src is not None:
+            return self._local_base(src)
+        mirror = self._mirror_path(repo.name)
+        self._ensure_mirror(mirror, repo.name, WorkspaceMode.FETCH)
+        # _base_ref 对已建 remote-tracking 的 mirror 返回 "origin/<branch>"(供 provision
+        # 直接当 worktree 起点用); prepare 对外承诺的是"默认分支名"本身, 去掉前缀。
+        return self._base_ref(mirror).removeprefix("origin/")
 
     def provision(
         self, work_item_id: WorkItemId, repo: RepoRef, mode: WorkspaceMode, branch: str

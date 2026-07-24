@@ -6,7 +6,7 @@ from datetime import datetime
 from autodev.domain.enums import GatePoint, TaskType, WorkflowState
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import InvariantError
-from autodev.domain.ids import WorkItemId
+from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.value_objects import AutonomyDial, Cost, RepoRef, Requirement, RetryLedger
 
 
@@ -58,6 +58,7 @@ class WorkItem:
     requirement: Requirement
     autonomy_dial: AutonomyDial
     type: TaskType | None = None
+    project_id: ProjectId | None = None
     state: WorkflowState = S.INTAKE
     artifact_versions: dict[str, list] = field(default_factory=dict)
     history: list[StateTransition] = field(default_factory=list)
@@ -77,12 +78,14 @@ class WorkItem:
         requirement: Requirement,
         autonomy_dial: AutonomyDial,
         now: datetime,
+        project_id: ProjectId | None = None,
     ) -> WorkItem:
         return cls(
             id=id,
             repo_ref=repo_ref,
             requirement=requirement,
             autonomy_dial=autonomy_dial,
+            project_id=project_id,
             created_at=now,
             updated_at=now,
         )

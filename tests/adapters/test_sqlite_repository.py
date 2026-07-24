@@ -1,10 +1,13 @@
 from datetime import datetime
 
+import pytest
+
+from autodev.adapters.memory_repository import InMemoryWorkItemRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
 from autodev.domain.artifacts import TriageArtifact
 from autodev.domain.enums import TaskType, WorkspaceMode
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.ids import WorkItemId
+from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
 
@@ -100,3 +103,59 @@ def test_full_roundtrip_fidelity(tmp_path):
     assert versions[0].workspace_mode is WorkspaceMode.FETCH
     assert versions[1].workspace_mode is WorkspaceMode.REUSE
     assert got.artifacts["triage"].workspace_mode is WorkspaceMode.REUSE
+
+
+def test_project_id_roundtrips_when_set(tmp_path):
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    pid = ProjectId.new()
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("repo-a"),
+        Requirement("fix typo", "repo-a", (), "raw"),
+        AutonomyDial.all_human(),
+        NOW,
+        project_id=pid,
+    )
+    repo.save(wi)
+    got = repo.get(wi.id)
+    assert got.project_id == pid
+
+
+def test_project_id_defaults_to_none_when_absent():
+    # 未归类工作项(project_id=None)往返序列化仍为 None; 兼容旧数据(无 project_id 键)。
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("repo-a"),
+        Requirement("fix typo", "repo-a", (), "raw"),
+        AutonomyDial.all_human(),
+        NOW,
+    )
+    assert wi.project_id is None
+
+    from autodev.adapters.sqlite_repository import _from_dict, _to_dict
+
+    d = _to_dict(wi)
+    assert d["project_id"] is None
+    del d["project_id"]  # 模拟旧数据缺失该键
+    got = _from_dict(d)
+    assert got.project_id is None
+
+
+def _sqlite_repo(tmp_path):
+    return SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+
+
+def _memory_repo(tmp_path):
+    return InMemoryWorkItemRepository()
+
+
+@pytest.mark.parametrize("factory", [_sqlite_repo, _memory_repo])
+def test_delete_removes_work_item(tmp_path, factory):
+    repo = factory(tmp_path)
+    wi = _wi()
+    repo.save(wi)
+
+    repo.delete(wi.id)
+
+    with pytest.raises(KeyError):
+        repo.get(wi.id)

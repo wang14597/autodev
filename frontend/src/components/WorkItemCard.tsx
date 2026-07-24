@@ -4,10 +4,10 @@ import { formatShortTime } from '../lib/workitem'
 import { StatusBadge } from './StatusBadge'
 import styles from './WorkItemCard.module.css'
 
-export function WorkItemCard({ item }: { item: WorkItemSummary }) {
+export function WorkItemCard({ item, projectId }: { item: WorkItemSummary; projectId: string }) {
   return (
     <NavLink
-      to={`/workitems/${item.id}`}
+      to={`/projects/${projectId}/workitems/${item.id}`}
       className={({ isActive }) => `${styles.card} ${isActive ? styles.active : ''}`.trim()}
     >
       <p className={styles.goal}>{item.goal}</p>

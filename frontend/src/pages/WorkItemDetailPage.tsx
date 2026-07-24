@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { BriefDocument } from '../components/BriefDocument'
 import { EmptyStage } from '../components/EmptyStage'
@@ -10,7 +10,7 @@ import { useWorkItem } from '../hooks/useWorkItem'
 import styles from './WorkItemDetailPage.module.css'
 
 export function WorkItemDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { pid, id } = useParams<{ pid: string; id: string }>()
   const { data: detail, isError, error, isLoading } = useWorkItem(id)
 
   if (isError) {
@@ -26,6 +26,12 @@ export function WorkItemDetailPage() {
 
   return (
     <div className={styles.page}>
+      {pid && (
+        <Link to={`/projects/${pid}`} className={styles.back}>
+          ← 返回项目
+        </Link>
+      )}
+
       <section className={styles.overview}>
         <p className={styles.goal}>{detail.goal}</p>
         <div className={styles.metaRow}>

@@ -10,7 +10,6 @@ vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof client>('../api/client')
   return {
     ...actual,
-    getProjects: vi.fn().mockResolvedValue(['demo']),
     createWorkItem: vi.fn(),
   }
 })
@@ -22,7 +21,7 @@ function renderForm() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <NewWorkItemForm />
+        <NewWorkItemForm projectId="p-1" />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -33,36 +32,35 @@ describe('NewWorkItemForm', () => {
     vi.mocked(client.createWorkItem).mockReset()
   })
 
-  it('shows an inline validation error and does not submit when both fields are empty', async () => {
+  it('shows an inline validation error and does not submit when the goal is empty', async () => {
     const user = userEvent.setup()
     renderForm()
 
     await user.click(screen.getByRole('button', { name: '创建工作项' }))
 
-    expect(await screen.findByText('需求和项目都要填。')).toBeInTheDocument()
+    expect(await screen.findByText('需求不能为空。')).toBeInTheDocument()
     expect(client.createWorkItem).not.toHaveBeenCalled()
   })
 
-  it('shows an inline validation error when only the goal is filled', async () => {
-    const user = userEvent.setup()
-    renderForm()
-
-    await user.type(screen.getByLabelText('需求'), '加限流')
-    await user.click(screen.getByRole('button', { name: '创建工作项' }))
-
-    expect(await screen.findByText('需求和项目都要填。')).toBeInTheDocument()
-    expect(client.createWorkItem).not.toHaveBeenCalled()
-  })
-
-  it('submits goal and repo when both are filled', async () => {
+  it('submits the goal against the given project id when filled', async () => {
     vi.mocked(client.createWorkItem).mockResolvedValue({ id: 'wi-1' })
     const user = userEvent.setup()
     renderForm()
 
     await user.type(screen.getByLabelText('需求'), '加限流')
-    await user.type(screen.getByLabelText('项目'), 'demo')
     await user.click(screen.getByRole('button', { name: '创建工作项' }))
 
-    expect(client.createWorkItem).toHaveBeenCalledWith('加限流', 'demo')
+    expect(client.createWorkItem).toHaveBeenCalledWith('p-1', '加限流')
+  })
+
+  it('surfaces a server-side error from the mutation', async () => {
+    vi.mocked(client.createWorkItem).mockRejectedValue(new client.ApiError(400, '需求不能为空。'))
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.type(screen.getByLabelText('需求'), '加限流')
+    await user.click(screen.getByRole('button', { name: '创建工作项' }))
+
+    expect(await screen.findByText('需求不能为空。')).toBeInTheDocument()
   })
 })

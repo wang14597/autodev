@@ -11,3 +11,12 @@ class WorkItemId:
     @classmethod
     def new(cls) -> WorkItemId:
         return cls(uuid.uuid4().hex)
+
+
+@dataclass(frozen=True)
+class ProjectId:
+    value: str
+
+    @classmethod
+    def new(cls) -> ProjectId:
+        return cls(uuid.uuid4().hex)

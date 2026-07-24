@@ -289,6 +289,53 @@ def test_cleanup_is_idempotent(tmp_path):
     a.cleanup(WorkspaceHandle(location=str(tmp_path / "gone"), label="b"))  # 不报错
 
 
+def test_prepare_remote_builds_mirror_and_returns_default_branch(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    branch = a.prepare(RepoRef("r"))
+
+    assert branch == "main"
+    assert a._mirror_path("r").exists()
+
+
+def test_prepare_local_worktree_returns_default_branch(tmp_path):
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+
+    branch = a.prepare(RepoRef("proj"))
+
+    assert branch == "main"
+    assert not a._mirror_path("proj").exists()  # 本地仓库: 不建镜像
+
+
+def test_prepare_idempotent(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    b1 = a.prepare(RepoRef("r"))
+    b2 = a.prepare(RepoRef("r"))  # 再次调用: 幂等(FETCH 重新拉取已存在的 mirror)
+
+    assert b1 == b2 == "main"
+
+
+def test_repo_status_skips_ls_remote_when_mirror_exists(tmp_path):
+    # mirror 已建好后, repo_status 应短路直接判定本地可用, 不再发起 ls-remote
+    # (即使 repo_map 指向的 url 不可达/网络调用会失败, 也不应触发)。
+    cfg = _cfg(tmp_path, repo_map={"r": "https://unreachable.invalid/nope.git"})
+    (cfg.mirror_dir / "r.git").mkdir(parents=True)
+
+    def fake_run(*a, **k):
+        raise AssertionError("ls-remote 不应被调用: mirror 已存在应短路")
+
+    a = GitWorkspaceAdapter(cfg, run=fake_run)
+
+    st = a.repo_status(RepoRef("r"))
+
+    assert st.exists_local is True
+    assert st.exists_remote is False
+
+
 def test_provision_create_inits_local_repo_with_worktree(tmp_path):
     a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={}))  # 无远程
     h = a.provision(WorkItemId("new1"), RepoRef("brand-new"), WorkspaceMode.CREATE, "autodev/new1")
