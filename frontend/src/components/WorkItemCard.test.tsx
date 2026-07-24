@@ -15,10 +15,10 @@ const item: WorkItemSummary = {
 }
 
 describe('WorkItemCard', () => {
-  it('renders goal, repo, and status, and links to the detail page', () => {
+  it('renders goal, repo, and status, and links to the project-scoped detail page', () => {
     render(
       <MemoryRouter>
-        <WorkItemCard item={item} />
+        <WorkItemCard item={item} projectId="p-1" />
       </MemoryRouter>,
     )
 
@@ -27,6 +27,6 @@ describe('WorkItemCard', () => {
     expect(screen.getByText('分诊')).toBeInTheDocument()
 
     const link = screen.getByRole('link')
-    expect(link).toHaveAttribute('href', '/workitems/wi-42')
+    expect(link).toHaveAttribute('href', '/projects/p-1/workitems/wi-42')
   })
 })

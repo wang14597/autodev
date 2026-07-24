@@ -1,26 +1,22 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { useCreateWorkItem } from '../hooks/useCreateWorkItem'
-import { useProjects } from '../hooks/useProjects'
 import styles from './NewWorkItemForm.module.css'
 
-export function NewWorkItemForm() {
-  const { data: projects } = useProjects()
-  const mutation = useCreateWorkItem()
+export function NewWorkItemForm({ projectId }: { projectId: string }) {
+  const mutation = useCreateWorkItem(projectId)
   const [goal, setGoal] = useState('')
-  const [repo, setRepo] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
-  const datalistId = useId()
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (goal.trim() === '' || repo.trim() === '') {
-      setValidationError('需求和项目都要填。')
+    if (goal.trim() === '') {
+      setValidationError('需求不能为空。')
       return
     }
     setValidationError(null)
-    mutation.mutate({ goal: goal.trim(), repo: repo.trim() })
+    mutation.mutate(goal.trim())
   }
 
   const serverError =
@@ -40,27 +36,6 @@ export function NewWorkItemForm() {
           placeholder="描述这次要做的需求…"
           disabled={mutation.isPending}
         />
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="workitem-repo">
-          项目
-        </label>
-        <input
-          id="workitem-repo"
-          className={styles.input}
-          list={datalistId}
-          value={repo}
-          onChange={(e) => setRepo(e.target.value)}
-          placeholder="项目名，或本地 git 仓库路径"
-          disabled={mutation.isPending}
-        />
-        <datalist id={datalistId}>
-          {(projects ?? []).map((project) => (
-            <option key={project} value={project} />
-          ))}
-        </datalist>
-        <p className={styles.hint}>填已登记项目名，或本地 git 仓库目录路径（会自动登记）。</p>
       </div>
 
       {validationError && <p className={styles.error}>{validationError}</p>}

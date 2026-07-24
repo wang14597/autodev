@@ -39,8 +39,8 @@ export function AppHeader() {
       <ContourTexture />
       <div className={styles.content}>
         <span className={styles.wordmark}>AutoDev</span>
-        <p className={styles.eyebrow}>AI 研发工作流 · 工作台</p>
-        <h1 className={styles.title}>创建工作项，让 Claude 读懂代码再动手</h1>
+        <p className={styles.eyebrow}>AI 研发工作流 · 项目工作台</p>
+        <h1 className={styles.title}>创建项目，让 Claude 读懂代码再动手</h1>
       </div>
     </header>
   )

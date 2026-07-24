@@ -10,7 +10,14 @@
 .rail {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -20,16 +27,6 @@
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-
-.railHeader {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.main {
-  min-width: 0;
 }
 
 @media (max-width: 860px) {

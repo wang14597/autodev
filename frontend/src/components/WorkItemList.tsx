@@ -3,7 +3,13 @@ import { EmptyStage } from './EmptyStage'
 import { WorkItemCard } from './WorkItemCard'
 import styles from './WorkItemList.module.css'
 
-export function WorkItemList({ items }: { items: WorkItemSummary[] }) {
+export function WorkItemList({
+  items,
+  projectId,
+}: {
+  items: WorkItemSummary[]
+  projectId: string
+}) {
   if (items.length === 0) {
     return <EmptyStage message="还没有工作项。在上面创建第一个。" />
   }
@@ -12,7 +18,7 @@ export function WorkItemList({ items }: { items: WorkItemSummary[] }) {
     <ul className={styles.list}>
       {items.map((item) => (
         <li key={item.id}>
-          <WorkItemCard item={item} />
+          <WorkItemCard item={item} projectId={projectId} />
         </li>
       ))}
     </ul>
