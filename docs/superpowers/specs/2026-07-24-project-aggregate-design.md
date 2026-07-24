@@ -26,7 +26,8 @@
 - 不承载 git 内部就绪状态（镜像是否 fetch 等）——那是 F1 基础设施缓存，按 repo 名共享。
 
 ### 2.2 端口（`src/autodev/domain/ports.py`）
-- 新增 `ProjectRepository`(Protocol)：`save/get/get_by_name/list_all`。
+- 新增 `ProjectRepository`(Protocol)：`save/get/get_by_name/list_all/delete`。
+- `WorkItemRepository` 增 `delete(work_item_id)`（供删除项目时级联移除其工作项；additive，仿 list_all）。
 - `WorkspacePort` 增 `prepare(repo: RepoRef) -> str`：一次性把仓库准备好并返回默认分支名（远程：建/刷新镜像 + set-head；本地 worktree：校验 + 读 HEAD 分支）。幂等。
 
 ### 2.3 WorkItem 变更（`src/autodev/domain/work_item.py`）
@@ -54,6 +55,7 @@
 - `refresh_project(id)`：再 prepare，更新 default_branch。
 - `create_workitem(project_id, goal) -> id`：查 Project → `WorkItem.create(project_id=..., repo_ref=项目名, ...)` → 后台有界驱动（不变，止于 DESIGN）。
 - `list_workitems(project_id) -> [...]`；`get_workitem(id)`（不变）。
+- `delete_project(id)`：**级联删除** —— 遍历该项目下工作项：若其有 ContextArtifact，用其记录的 `workspace_location/workspace_label` 调 `WorkspacePort.cleanup`（best-effort，幂等；清 worktree + 分支）→ `WorkItemRepository.delete`；再从登记表移除 `name→repo_source`（含 repos.json 持久化）→ `ProjectRepository.delete`。运行中工作项的清理为 best-effort（可能有孤儿 claude 子进程，无害）；不删远程镜像缓存(可复用)。
 - 驱动/引擎/handlers：不变（仍按 repo_ref 走）。
 
 ## 5. 持久化
@@ -69,6 +71,7 @@
 - `POST /api/projects` `{name, repo}` → `{id}`（空/重名 400）
 - `GET /api/projects/{id}` → 项目详情 `{...project, workitems:[summary...]}`；未知 404
 - `POST /api/projects/{id}/refresh` → `{default_branch}`
+- `DELETE /api/projects/{id}` → 200/204（级联删除项目及其工作项 + 清理 worktree）；未知 404
 - `POST /api/projects/{id}/workitems` `{goal}` → `{id}`（空 400；项目不存在 404）
 - `GET /api/workitems/{id}` → 工作项详情（不变）
 - SPA 托管不变。
@@ -76,16 +79,16 @@
 ## 7. 前端（`frontend/`，项目为中心重构导航）
 
 - 路由：`/`=ProjectsPage(项目列表+新建项目)、`/projects/:pid`=ProjectDetailPage(项目概览+其工作项列表+在此新建工作项+刷新)、`/projects/:pid/workitems/:id`=WorkItemDetailPage(复用现有生命周期/简报)。
-- 组件复用现有 StatusBadge/LifelinePipeline/BriefDocument 等；新增 ProjectList/ProjectCard/NewProjectForm/ProjectHeader。
-- hooks：useProjects/useProject/useCreateProject/useRefreshProject/useCreateWorkItem(project 维度)/useWorkItem(不变)。
+- 组件复用现有 StatusBadge/LifelinePipeline/BriefDocument 等；新增 ProjectList/ProjectCard/NewProjectForm/ProjectHeader（含"刷新"与"删除"按钮，删除需二次确认）。
+- hooks：useProjects/useProject/useCreateProject/useRefreshProject/useDeleteProject/useCreateWorkItem(project 维度)/useWorkItem(不变)。删除成功后失效项目列表并导航回首页。
 - 设计身份沿用；文案围绕"项目/工作项"。
 
 ## 8. 测试与门禁
 
 - 领域：Project 聚合(create/mark_prepared)、ProjectRepository(sqlite/内存 save/get/get_by_name/list_all)。
 - F1：`prepare` 远程(建镜像+默认分支)、本地 worktree(读默认分支)、幂等；REUSE 复用不 fetch。
-- 服务：create_project(prepare 调用+持久化+重名拒绝)、create_workitem(归属 project_id、repo_ref 冗余正确)、list_workitems 按项目过滤、refresh。
-- 端点：projects CRUD 形状/状态码/404/400、项目下建工作项。
+- 服务：create_project(prepare 调用+持久化+重名拒绝)、create_workitem(归属 project_id、repo_ref 冗余正确)、list_workitems 按项目过滤、refresh、**delete_project(级联删工作项+调 cleanup+移除登记表条目)**。
+- 端点：projects CRUD(含 DELETE) 形状/状态码/404/400、项目下建工作项。
 - 前端:api/hooks/组件/页面(项目列表、项目详情、在项目下建工作项、轮询)。
 - Python + 前端全套门禁绿;CHANGELOG/README/diagrams 更新(doc-impact)。
 
@@ -93,7 +96,7 @@
 
 - 不做真实分诊(TaskType 仍恒 SMALL_CHANGE，可能未来丢弃)。
 - 不做鉴权/多租户/项目级权限(后续)。
-- 不做 project 删除的级联清理策略深挖(先支持基本删除或暂不删)。
+- 项目删除：级联删工作项 + best-effort 清理 worktree；不做"运行中禁止删除"的门禁(运行中删=best-effort，孤儿子进程无害)、不做删除撤销/回收站。
 - 不改 DESIGN 及之后阶段(仍置灰待建设)。
 - 老数据不迁移(project_id 缺失=未归类，优雅显示)。
 
@@ -102,4 +105,5 @@
 - 可建项目(一次性 setup 探测默认分支)、在项目下建多个工作项并见其归属;项目页列出其工作项。
 - 同项目下第 2+ 个工作项**不再重复 ls-remote/fetch**(远程 REUSE / 本地 worktree 直挂)。
 - 领域含 Project 聚合 + ProjectRepository;WorkItem 带 project_id;引擎/handlers 不回归。
+- 可删除项目:级联移除其工作项、清理 worktree、从登记表移除;删除后列表/详情正确。
 - 前后端门禁全绿;文档一致(第1/2层 + mermaid)。
