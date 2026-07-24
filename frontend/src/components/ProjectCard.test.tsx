@@ -8,13 +8,13 @@ const project: Project = {
   id: 'p-42',
   name: 'demo-gateway',
   repo_source: '/repos/demo-gateway',
-  default_branch: 'main',
+  branch: 'main',
   workitem_count: 3,
   created_at: '2026-07-22T09:00:00',
 }
 
 describe('ProjectCard', () => {
-  it('renders name, repo source, default branch, and workitem count, and links to the detail page', () => {
+  it('renders name, repo source, tracked branch, and workitem count, and links to the detail page', () => {
     render(
       <MemoryRouter>
         <ProjectCard project={project} />
@@ -28,15 +28,5 @@ describe('ProjectCard', () => {
 
     const link = screen.getByRole('link')
     expect(link).toHaveAttribute('href', '/projects/p-42')
-  })
-
-  it('shows a fallback label when the default branch has not been probed yet', () => {
-    render(
-      <MemoryRouter>
-        <ProjectCard project={{ ...project, default_branch: null }} />
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByText('未探测分支')).toBeInTheDocument()
   })
 })

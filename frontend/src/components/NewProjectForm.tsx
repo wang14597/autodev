@@ -8,6 +8,7 @@ export function NewProjectForm() {
   const mutation = useCreateProject()
   const [name, setName] = useState('')
   const [repo, setRepo] = useState('')
+  const [branch, setBranch] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -17,7 +18,7 @@ export function NewProjectForm() {
       return
     }
     setValidationError(null)
-    mutation.mutate({ name: name.trim(), repo: repo.trim() })
+    mutation.mutate({ name: name.trim(), repo: repo.trim(), branch: branch.trim() })
   }
 
   const serverError =
@@ -52,6 +53,20 @@ export function NewProjectForm() {
           disabled={mutation.isPending}
         />
         <p className={styles.hint}>首次登记会做一次性 setup（探测默认分支），之后自动复用。</p>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="project-branch">
+          分支
+        </label>
+        <input
+          id="project-branch"
+          className={styles.input}
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+          placeholder="留空=仓库默认分支"
+          disabled={mutation.isPending}
+        />
       </div>
 
       {validationError && <p className={styles.error}>{validationError}</p>}
