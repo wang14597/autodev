@@ -39,7 +39,10 @@ def _code_truth() -> dict[str, int]:
         1
         for v in vars(ports).values()
         if isinstance(v, type)
-        and (v.__name__.endswith("Port") or v.__name__ in {"WorkItemRepository", "EventPublisher"})
+        and (
+            v.__name__.endswith("Port")
+            or v.__name__ in {"WorkItemRepository", "ProjectRepository", "EventPublisher"}
+        )
     )
     n_events = sum(
         1

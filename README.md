@@ -170,9 +170,9 @@ ruff format .
 
 ### 控制台（前端 + 后端）
 
-平台控制台以领域聚合根 **WorkItem（工作项）** 为中心：用户创建工作项（填需求 + 关联一个项目/git 仓库）→ 后台自动驱动 需求录入→分诊→上下文收集（真调 Claude）→ 详情页展示完整生命周期与产出的上下文简报；多工作项并行。当前只跑到 CONTEXT 阶段，之后阶段（方案/评审/开发…）在界面标"待建设"，随 F5–F8 逐步接入。真调 Claude 需在能访问内网网关的环境（VPN）里运行。
+平台控制台以领域聚合根 **Project（项目）** 为中心，**两步流程**：先建项目（登记一个 git 仓库或本地路径，此时做一次性 setup、探测默认分支）→ 在项目下创建多个工作项（WorkItem，只填需求）。工作项后台自动驱动 需求录入→分诊→上下文收集（真调 Claude）→ 详情页展示完整生命周期与产出的上下文简报。同一项目下的工作项**共享一次性 setup**（不再重复判断分支/拉远程）。导航：项目列表 → 项目详情（其工作项 + 在此新建 + 刷新 + 删除）→ 工作项详情。当前只跑到 CONTEXT 阶段，之后阶段（方案/评审/开发…）标"待建设"，随 F5–F8 接入。真调 Claude 需在能访问内网网关的环境（VPN）里运行。
 
-- 后端：`src/autodev/webapp/`（FastAPI），用真实 `WorkItem`/`SqliteWorkItemRepository`/`Engine` + F1/F3 适配器，有界驱动止于 DESIGN。
+- 后端：`src/autodev/webapp/`（FastAPI），用真实 `Project`/`WorkItem`/SQLite 仓储/`Engine` + F1/F3 适配器，有界驱动止于 DESIGN。
 - 前端：`frontend/`（Vite + React + TypeScript，TanStack Query 轮询，React Router），字体与 Markdown 渲染库本地打包，运行时零公网 CDN。
 
 **生产运行（构建后由后端一体托管）：**
@@ -180,13 +180,12 @@ ruff format .
 ```bash
 cd frontend && npm ci && npm run build && cd ..     # 1) 构建前端 → frontend/dist
 pip install -e '.[web]'                              # 2) 装后端 Web 依赖
-export AUTODEV_REPO_MAP='{"my-service":"git@gitlab.example.com:team/my-service.git"}'
-export AUTODEV_HOME="$HOME/.autodev"                 # 工作项库/上下文结果落地(默认 ~/.autodev)
+export AUTODEV_HOME="$HOME/.autodev"                 # 项目库/工作项库/上下文结果落地(默认 ~/.autodev)
 export ANTHROPIC_BASE_URL="http://<内网网关地址>:<端口>/api"   # 内网网关(需 VPN；实际地址向团队获取)
 python -m autodev.webapp                             # 默认 http://127.0.0.1:8000
 ```
 
-未构建 `frontend/dist` 时，后端返回占位页（提示先构建），API 仍可用。
+启动后在页面里**新建项目**（填 git 仓库地址或本地 git 仓库目录路径，会自动登记并做一次性 setup），再在项目下创建工作项。可选 `AUTODEV_REPO_MAP`（JSON）用于预置仓库映射。未构建 `frontend/dist` 时，后端返回占位页（提示先构建），API 仍可用。
 
 **前端开发（热更新，代理到后端）：** 终端 A `python -m autodev.webapp`；终端 B `cd frontend && npm run dev`（Vite :5173，`/api` 自动代理到 :8000）。
 
@@ -208,14 +207,15 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 - RetryPolicy：失败重试与回退决策
 
 ✅ **出站端口**
-- <!-- fact:ports -->9 个端口协议已定义：WorkItemRepository、WorkspacePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
-- **4 个端口已真实实现**：
+- <!-- fact:ports -->10 个端口协议已定义：WorkItemRepository、ProjectRepository、WorkspacePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
+- **5 个端口已真实实现**：
   - WorkItemRepository → SQLite 适配器（持久化/查询）
+  - ProjectRepository → SQLite 适配器（项目聚合持久化）
   - EventPublisher → 内存事件总线
   - WorkspacePort → GitWorkspaceAdapter（git bare mirror + worktree，F1）
   - ContextPort → ClaudeContextAdapter（Claude Code 两遍收集→复核，F3）
 - **5 个端口当前为假实现**（mock/stub），真实 ACL 见下方"计划中"
-- 另有驱动侧适配器：WorkItem 控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），用 F1+F3 驱动工作项走 需求录入→分诊→上下文
+- 另有驱动侧适配器：项目控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），以 Project 为中心，用 F1+F3 驱动工作项走 需求录入→分诊→上下文
 
 ✅ **测试覆盖**
 - **48 个测试全部通过**
@@ -233,9 +233,10 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 ### 端口实现进度
 
 ```
-出站端口（共 <!-- fact:ports -->9 个）：
+出站端口（共 <!-- fact:ports -->10 个）：
 
 ✓ WorkItemRepository        → SQLite 适配器
+✓ ProjectRepository         → SQLite 适配器（项目聚合）
 ✓ EventPublisher            → 内存事件总线
 
 ✓ WorkspacePort           → GitWorkspaceAdapter（git mirror + worktree，F1）

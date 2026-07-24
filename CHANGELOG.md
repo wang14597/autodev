@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Project 一等概念（领域聚合 + 项目为中心控制台）**：新增 `Project` 领域聚合（`ProjectId`、name、repo_source、缓存的 `default_branch`、project 级 AutonomyDial）+ `ProjectRepository` 端口（SQLite/内存实现）。`WorkItem` 增 `project_id` 归属。控制台改为**两步 + 项目为中心**：先建项目（登记仓库/本地路径 + 一次性 setup 探测默认分支）→ 在项目下建多个工作项；首页项目列表 → 项目详情（其工作项 + 在此新建 + 刷新 + 删除）→ 工作项详情。**同项目共享一次性 setup**：`WorkspacePort.prepare` 建项目时准备一次，`repo_status` 短路（镜像/本地仓已就绪即跳过 `ls-remote`），第 2+ 个工作项不再重复探测/fetch。支持**删除项目**（级联删其工作项 + best-effort 清理 worktree + 移除登记）。新增 API：`GET/POST /api/projects`、`GET/POST(refresh)/DELETE /api/projects/{id}`、`POST /api/projects/{id}/workitems`。前端 Vite+React 以 Project 为中心重构导航。出站端口由 9 增至 10（加 ProjectRepository）。
 - 本地项目自动登记 + worktree 直挂：创建工作项时"项目"输入若是一个本地 git 仓库目录路径，控制台自动以目录名登记进 `repo_map`（值带 `worktree:` 标记），并持久化到 `~/.autodev/repos.json`（重启仍在）。F1 见 `worktree:` 标记会**直接在你的仓库上 `git worktree add`**（共享对象库、不整仓克隆、秒级），worktree 落在 `~/.autodev/workspaces/<id>`——只在源仓 `.git` 里留可删的分支+worktree 注册，不碰你的工作目录文件。其它 repo_map 值（GitLab 远程 URL、file://、裸路径等）语义不变，仍走镜像克隆。`GET /api/projects` 反映运行时新增的项目。
 - WorkItem 控制台（driving adapter，前端 + 后端）：平台面向用户的控制台，中心实体是领域聚合根 `WorkItem`。后端 `src/autodev/webapp/`（FastAPI）用真实 `WorkItem` + `SqliteWorkItemRepository` + `Engine` + F1/F3 适配器，**有界驱动**只自动跑 INTAKE→TRIAGE→CONTEXT 并止于 DESIGN（DESIGN 及之后用抛错桩，正常流程不触达）；应用服务/视图投影/路由均以注入假件单测。前端 `frontend/`（Vite + React + TypeScript，TanStack Query 轮询，React Router），以 WorkItem 为中心：创建工作项（需求 + 关联项目）→ 自动收集 → 生命周期流水线 + 上下文简报展示，多工作项并行；字体与 Markdown 渲染库本地打包（运行时零公网 CDN），自带 typecheck/oxlint/vitest/build/prettier 门禁并接入 GitHub Actions frontend job。FastAPI 生产托管 `frontend/dist`（SPA 客户端路由回退 + 目录穿越防护），未构建回退占位页、API 仍可用。新增可选依赖组 `web`（fastapi/uvicorn/httpx）与环境变量 `AUTODEV_FRONTEND_DIST`。
 - `WorkItemRepository.list_all()`：只读枚举全部工作项（含终态），供控制台列表在进程重启后仍能持久展示（`claim_runnable` 排除终态，不适用）；SQLite 与内存适配器均实现。
@@ -66,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - <!-- fact:artifacts -->8 versioned artifact types (TriageArtifact, ContextArtifact, DesignArtifact, ReviewArtifact, ImplArtifact, AcceptanceArtifact, VerificationArtifact, DeliveryArtifact)
   - <!-- fact:events -->4 domain events (WorkItemCreated, HumanApprovalRequested, WorkItemCompleted, WorkItemFailed)
   - 4 domain services (TriagePolicy, GatePolicy, TransitionRules, RetryPolicy)
-  - <!-- fact:ports -->9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
+  - 9 outbound ports (Protocol interfaces): WorkspacePort, ContextPort, DesignPort, ReviewPort, ExecutionPort, VerificationPort, DeliveryPort, WorkItemRepository, EventPublisher
 
 - **State Machine Engine:** Production-grade orchestration engine
   - `Engine.advance()` (single public method) internally drives success / suspend / retry / rollback / fail / finalize outcomes; module-level `run_until_quiescent()` advances a WorkItem through consecutive stages until none are runnable
@@ -98,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Architecture Decisions
 - **DDD with Ubiquitous Language:** All code and docs use 统一语言 terms (WorkItem, DesignProposal, Artifact, Gate, etc.); 禁止 SDK-specific leakage into core domain.
-- **Hexagonal (Ports & Adapters):** Core orchestration domain defines <!-- fact:ports -->9 outbound ports; adapters implement them without polluting core logic.
+- **Hexagonal (Ports & Adapters):** Core orchestration domain defines <!-- fact:ports -->10 outbound ports; adapters implement them without polluting core logic.
 - **Event-Driven Collaboration:** Domain publishes events; the Collaboration/Observability bounded contexts subscribe (decoupled) — no dedicated "CollaborationPort" exists; Collaboration is a bounded context, not a code port.
 - **Append-Only Artifacts:** All stage outputs versioned per key; no overwrites. Enables audit trail and clean rollback semantics.
 - **AutonomyDial:** Gate decisions parameterized per (taskType, repo, gatePoint) → auto | human; enables gradual automation rollout.
