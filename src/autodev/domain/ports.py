@@ -28,10 +28,15 @@ from autodev.domain.work_item import WorkItem
 class WorkspacePort(Protocol):
     def repo_status(self, repo: RepoRef) -> RepoStatus: ...
     def provision(
-        self, work_item_id: WorkItemId, repo: RepoRef, mode: WorkspaceMode, branch: str
+        self,
+        work_item_id: WorkItemId,
+        repo: RepoRef,
+        mode: WorkspaceMode,
+        branch: str,
+        base_branch: str | None = None,
     ) -> WorkspaceHandle: ...
     def cleanup(self, handle: WorkspaceHandle) -> None: ...
-    def prepare(self, repo: RepoRef) -> str: ...
+    def prepare(self, repo: RepoRef, branch: str | None = None) -> str: ...
 
 
 class ContextPort(Protocol):

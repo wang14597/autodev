@@ -160,7 +160,7 @@ class ProjectConsoleService:
             self._registry.unregister(name)
             raise ValueError(f"项目仓库准备失败: {e.message}") from e
         now = self._clock()
-        project = Project.create(self._id_gen_project(), name, repo_source, now)
+        project = Project.create(self._id_gen_project(), name, repo_source, "", now)
         project.mark_prepared(default_branch, now)
         self._project_repo.save(project)
         return project.id.value

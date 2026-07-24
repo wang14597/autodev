@@ -42,6 +42,7 @@ def handle_context(work_item: WorkItem, ctx: StageContext, now: datetime) -> Sta
         work_item.repo_ref,
         triage.workspace_mode,
         branch_for(work_item),
+        base_branch=work_item.base_branch,
     )
     artifact = ctx.gatherer.gather(work_item.requirement, handle)
     return StageOutcome.ok("context", artifact)

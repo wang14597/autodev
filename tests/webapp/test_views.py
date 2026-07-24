@@ -136,7 +136,7 @@ def test_view_detail_failure_reason_when_failed():
 
 
 def test_view_project_fields():
-    project = Project.create(ProjectId("p1"), "demo", "worktree:/tmp/demo", NOW)
+    project = Project.create(ProjectId("p1"), "demo", "worktree:/tmp/demo", "", NOW)
     project.mark_prepared("main", NOW)
 
     view = view_project(project, workitem_count=3)
@@ -157,11 +157,11 @@ def test_view_project_created_at_none_when_missing():
     view = view_project(project, workitem_count=0)
 
     assert view["created_at"] is None
-    assert view["default_branch"] is None
+    assert view["default_branch"] == ""
 
 
 def test_view_project_detail_includes_workitem_summaries():
-    project = Project.create(ProjectId("p1"), "demo", "worktree:/tmp/demo", NOW)
+    project = Project.create(ProjectId("p1"), "demo", "worktree:/tmp/demo", "", NOW)
     project.mark_prepared("main", NOW)
     wi = _work_item(S.CONTEXT)
 
@@ -173,7 +173,7 @@ def test_view_project_detail_includes_workitem_summaries():
 
 
 def test_view_project_detail_empty_workitems():
-    project = Project.create(ProjectId("p1"), "demo", "url", NOW)
+    project = Project.create(ProjectId("p1"), "demo", "url", "", NOW)
 
     detail = view_project_detail(project, [])
 

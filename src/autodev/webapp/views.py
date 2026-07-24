@@ -102,7 +102,7 @@ def view_project(project: Project, workitem_count: int) -> dict[str, object]:
         "id": project.id.value,
         "name": project.name,
         "repo_source": project.repo_source,
-        "default_branch": project.default_branch,
+        "default_branch": project.branch,
         "workitem_count": workitem_count,
         "created_at": project.created_at.isoformat() if project.created_at else None,
     }

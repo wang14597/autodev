@@ -27,22 +27,29 @@ class FakeWorkspace:
         self.local, self.remote = local, remote
         self.default_branch = default_branch
         self.cleaned: list[str] = []
-        self.prepared: list[str] = []
+        self.prepared: list[tuple[str, str | None]] = []
+        self.provisioned: list[tuple[str, str | None]] = []
 
     def repo_status(self, repo: RepoRef) -> RepoStatus:
         return RepoStatus(self.local, self.remote)
 
     def provision(
-        self, work_item_id: WorkItemId, repo: RepoRef, mode: WorkspaceMode, branch: str
+        self,
+        work_item_id: WorkItemId,
+        repo: RepoRef,
+        mode: WorkspaceMode,
+        branch: str,
+        base_branch: str | None = None,
     ) -> WorkspaceHandle:
+        self.provisioned.append((repo.name, base_branch))
         return WorkspaceHandle(f"/tmp/{repo.name}/{work_item_id.value[:8]}", branch)
 
     def cleanup(self, handle: WorkspaceHandle) -> None:
         self.cleaned.append(handle.location)
 
-    def prepare(self, repo: RepoRef) -> str:
-        self.prepared.append(repo.name)
-        return self.default_branch
+    def prepare(self, repo: RepoRef, branch: str | None = None) -> str:
+        self.prepared.append((repo.name, branch))
+        return branch or self.default_branch
 
 
 class FakeContext:

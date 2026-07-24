@@ -27,7 +27,7 @@ REPO_FACTORIES = [_sqlite_repo, _memory_repo]
 def test_save_and_get_roundtrip_all_fields(tmp_path, factory):
     repo = factory(tmp_path)
     dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))
-    p = Project.create(ProjectId.new(), "repo-a", "git@example.com:repo-a.git", NOW)
+    p = Project.create(ProjectId.new(), "repo-a", "git@example.com:repo-a.git", "", NOW)
     p.autonomy_dial = dial
     p.mark_prepared("main", LATER)
     repo.save(p)
@@ -36,7 +36,7 @@ def test_save_and_get_roundtrip_all_fields(tmp_path, factory):
     assert got.id == p.id
     assert got.name == "repo-a"
     assert got.repo_source == "git@example.com:repo-a.git"
-    assert got.default_branch == "main"
+    assert got.branch == "main"
     assert got.autonomy_dial == dial
     assert got.created_at == NOW
     assert got.updated_at == LATER
@@ -52,7 +52,7 @@ def test_get_missing_raises_key_error(tmp_path, factory):
 @pytest.mark.parametrize("factory", REPO_FACTORIES)
 def test_get_by_name_hit_and_miss(tmp_path, factory):
     repo = factory(tmp_path)
-    p = Project.create(ProjectId.new(), "repo-a", "src-a", NOW)
+    p = Project.create(ProjectId.new(), "repo-a", "src-a", "", NOW)
     repo.save(p)
 
     found = repo.get_by_name("repo-a")
@@ -65,8 +65,8 @@ def test_get_by_name_hit_and_miss(tmp_path, factory):
 @pytest.mark.parametrize("factory", REPO_FACTORIES)
 def test_list_all(tmp_path, factory):
     repo = factory(tmp_path)
-    a = Project.create(ProjectId.new(), "repo-a", "src-a", NOW)
-    b = Project.create(ProjectId.new(), "repo-b", "src-b", NOW)
+    a = Project.create(ProjectId.new(), "repo-a", "src-a", "", NOW)
+    b = Project.create(ProjectId.new(), "repo-b", "src-b", "", NOW)
     repo.save(a)
     repo.save(b)
 
@@ -77,7 +77,7 @@ def test_list_all(tmp_path, factory):
 @pytest.mark.parametrize("factory", REPO_FACTORIES)
 def test_delete_removes_project(tmp_path, factory):
     repo = factory(tmp_path)
-    p = Project.create(ProjectId.new(), "repo-a", "src-a", NOW)
+    p = Project.create(ProjectId.new(), "repo-a", "src-a", "", NOW)
     repo.save(p)
 
     repo.delete(p.id)
@@ -90,11 +90,11 @@ def test_delete_removes_project(tmp_path, factory):
 @pytest.mark.parametrize("factory", REPO_FACTORIES)
 def test_save_is_upsert(tmp_path, factory):
     repo = factory(tmp_path)
-    p = Project.create(ProjectId.new(), "repo-a", "src-a", NOW)
+    p = Project.create(ProjectId.new(), "repo-a", "src-a", "", NOW)
     repo.save(p)
     p.mark_prepared("develop", LATER)
     repo.save(p)
 
     got = repo.get(p.id)
-    assert got.default_branch == "develop"
+    assert got.branch == "develop"
     assert got.updated_at == LATER

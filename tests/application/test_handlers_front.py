@@ -72,6 +72,26 @@ def test_context_provisions_workspace():
     assert out.artifact.workspace_label.startswith("autodev/")
 
 
+def test_context_passes_work_item_base_branch_to_provision():
+    from autodev.domain.artifacts import TriageArtifact
+
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("repo-a"),
+        Requirement("fix typo", "repo-a", (), "raw"),
+        AutonomyDial.all_human(),
+        NOW,
+        base_branch="develop",
+    )
+    wi.type = TaskType.SMALL_CHANGE
+    wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE))
+    ws = FakeWorkspace(local=True)
+
+    handle_context(wi, _ctx(ws), NOW)
+
+    assert ws.provisioned == [("repo-a", "develop")]
+
+
 def test_design_reads_context():
     wi = _wi()
     from autodev.domain.artifacts import ContextArtifact

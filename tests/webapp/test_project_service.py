@@ -75,11 +75,11 @@ def test_create_project_prepares_workspace_and_persists(tmp_path: Path):
 
     project_id = svc.create_project("demo", "git@host:team/demo.git")
 
-    assert workspace.prepared == ["demo"]
+    assert workspace.prepared == [("demo", None)]
     project = project_repo.get_by_name("demo")
     assert project is not None
     assert project.id.value == project_id
-    assert project.default_branch == "main"
+    assert project.branch == "main"
     assert registry.repo_map["demo"] == "git@host:team/demo.git"
 
 
@@ -206,8 +206,8 @@ def test_refresh_project_updates_default_branch(tmp_path: Path):
 
     assert branch == "develop"
     project = project_repo.get_by_name("demo")
-    assert project.default_branch == "develop"
-    assert workspace.prepared == ["demo", "demo"]
+    assert project.branch == "develop"
+    assert workspace.prepared == [("demo", None), ("demo", None)]
 
 
 def test_refresh_unknown_project_raises_lookup_error(tmp_path: Path):

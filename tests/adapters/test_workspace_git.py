@@ -336,6 +336,132 @@ def test_repo_status_skips_ls_remote_when_mirror_exists(tmp_path):
     assert st.exists_remote is False
 
 
+def test_prepare_local_fetches_best_effort(tmp_path):
+    # 本地 worktree 仓无 origin(纯本地项目): prepare 仍应尝试 fetch(best-effort), 不报错。
+    src = _make_remote(tmp_path / "proj")
+    calls: list[list[str]] = []
+
+    def spying_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.run(args, **kwargs)
+
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}), run=spying_run)
+
+    branch = a.prepare(RepoRef("proj"))
+
+    assert branch == "main"
+    assert any("fetch" in c for c in calls)
+
+
+def test_prepare_uses_explicit_branch(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    branch = a.prepare(RepoRef("r"), "feature-x")
+
+    assert branch == "feature-x"
+
+
+def test_prepare_local_uses_explicit_branch(tmp_path):
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+
+    branch = a.prepare(RepoRef("proj"), "feature-x")
+
+    assert branch == "feature-x"
+
+
+def test_prepare_defaults_branch_when_none(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    branch = a.prepare(RepoRef("r"), None)
+
+    assert branch == "main"
+
+
+def test_provision_bases_worktree_on_origin_branch_local_clone(tmp_path):
+    # 本地仓是另一个仓库的 clone(有 origin) -> provision(base_branch=B) 应基于
+    # fetch 之后的 origin/B, 而非可能陈旧的本地 B。
+    remote = _make_remote(tmp_path / "remote")
+    src = tmp_path / "clone"
+    subprocess.run(["git", "clone", remote, str(src)], check=True, capture_output=True, text=True)
+
+    # 远端新增一个仅存在于 origin 的提交(本地 clone 尚未 fetch 到)。
+    (Path(remote) / "origin_only.txt").write_text("only on origin\n")
+    subprocess.run(["git", "-C", remote, "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", remote, "commit", "-m", "origin only"], check=True, capture_output=True
+    )
+
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+    resolved = a.prepare(RepoRef("proj"), "main")  # fetch, 更新 origin/main
+    assert resolved == "main"
+
+    h = a.provision(
+        WorkItemId("wi1"), RepoRef("proj"), WorkspaceMode.FETCH, "autodev/wi1", base_branch="main"
+    )
+
+    assert (Path(h.location) / "origin_only.txt").exists()
+
+
+def test_provision_bases_worktree_on_origin_branch_remote_mirror(tmp_path):
+    # 远程仓(镜像): provision(base_branch=B) 应基于 fetch 后镜像里的 origin/B。
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    a.prepare(RepoRef("r"), "main")  # 建 mirror(fetch)
+
+    (Path(remote) / "origin_only.txt").write_text("only on origin\n")
+    subprocess.run(["git", "-C", remote, "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", remote, "commit", "-m", "origin only"], check=True, capture_output=True
+    )
+    a.prepare(RepoRef("r"), "main")  # 再次 prepare = 刷新 fetch, 拿到新提交
+
+    h = a.provision(
+        WorkItemId("wi2"), RepoRef("r"), WorkspaceMode.FETCH, "autodev/wi2", base_branch="main"
+    )
+
+    assert (Path(h.location) / "origin_only.txt").exists()
+
+
+def test_provision_falls_back_to_local_branch_when_no_origin(tmp_path):
+    # 本地 worktree 仓无 origin(纯本地项目): base_branch 给定但无 origin/<branch> ->
+    # 退回本地同名分支, 不报错。
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+
+    h = a.provision(
+        WorkItemId("wi3"), RepoRef("proj"), WorkspaceMode.FETCH, "autodev/wi3", base_branch="main"
+    )
+
+    assert (Path(h.location) / "app.py").read_text() == "x = 1\n"
+    cur = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=h.location,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert cur == "autodev/wi3"
+
+
+def test_provision_mirror_falls_back_to_base_ref_when_base_branch_missing(tmp_path):
+    # 镜像里没有 origin/<base_branch> 对应分支(如分支名打错/未推送) -> 退回镜像默认分支,
+    # 而不是把 base_branch 当本地分支名(镜像本无本地分支, 会直接报错)。
+    remote = _make_remote(tmp_path / "remote")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+
+    h = a.provision(
+        WorkItemId("wi4"),
+        RepoRef("r"),
+        WorkspaceMode.FETCH,
+        "autodev/wi4",
+        base_branch="does-not-exist",
+    )
+
+    assert (Path(h.location) / "app.py").read_text() == "x = 1\n"
+
+
 def test_provision_create_inits_local_repo_with_worktree(tmp_path):
     a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={}))  # 无远程
     h = a.provision(WorkItemId("new1"), RepoRef("brand-new"), WorkspaceMode.CREATE, "autodev/new1")

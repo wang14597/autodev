@@ -17,7 +17,7 @@ NOW = datetime(2026, 7, 24, 9, 0, 0)
 
 
 def _project(name: str = "demo", repo_source: str | None = None) -> Project:
-    p = Project.create(ProjectId.new(), name, repo_source or f"git@host:team/{name}.git", NOW)
+    p = Project.create(ProjectId.new(), name, repo_source or f"git@host:team/{name}.git", "", NOW)
     p.mark_prepared("main", NOW)
     return p
 
