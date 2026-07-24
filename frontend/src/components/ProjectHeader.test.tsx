@@ -13,6 +13,8 @@ vi.mock('../api/client', async () => {
     ...actual,
     deleteProject: vi.fn(),
     refreshProject: vi.fn(),
+    getProjectBranches: vi.fn(),
+    setProjectBranch: vi.fn(),
   }
 })
 
@@ -42,18 +44,64 @@ describe('ProjectHeader', () => {
   beforeEach(() => {
     vi.mocked(client.deleteProject).mockReset().mockResolvedValue(undefined)
     vi.mocked(client.refreshProject).mockReset().mockResolvedValue({ branch: 'main' })
+    vi.mocked(client.getProjectBranches).mockReset().mockResolvedValue(['develop', 'main'])
+    vi.mocked(client.setProjectBranch).mockReset().mockResolvedValue({ branch: 'develop' })
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('renders the project identity: name, repo source, tracked branch', () => {
+  it('renders the project identity: name, repo source, and a branch select with the current branch', async () => {
     renderHeader()
 
     expect(screen.getByText('demo')).toBeInTheDocument()
     expect(screen.getByText('/repos/demo')).toBeInTheDocument()
-    expect(screen.getByText('默认分支 main')).toBeInTheDocument()
+
+    const select = await screen.findByLabelText('默认分支')
+    expect(select).toHaveValue('main')
+    expect(screen.getByRole('option', { name: 'main' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'develop' })).toBeInTheDocument()
+  })
+
+  it('falls back to plain text while the branch list is loading', () => {
+    vi.mocked(client.getProjectBranches).mockReturnValue(new Promise(() => {}))
+    renderHeader()
+
+    expect(screen.queryByLabelText('默认分支')).not.toBeInTheDocument()
+    expect(screen.getByText('main')).toBeInTheDocument()
+  })
+
+  it('always offers the current branch as an option even if the fetched list omits it', async () => {
+    vi.mocked(client.getProjectBranches).mockResolvedValue(['develop', 'staging'])
+    renderHeader()
+
+    const select = await screen.findByLabelText('默认分支')
+    expect(select).toHaveValue('main')
+    expect(screen.getByRole('option', { name: 'main' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'develop' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'staging' })).toBeInTheDocument()
+  })
+
+  it('calls setProjectBranch with the newly chosen branch', async () => {
+    const user = userEvent.setup()
+    renderHeader()
+
+    const select = await screen.findByLabelText('默认分支')
+    await user.selectOptions(select, 'develop')
+
+    expect(client.setProjectBranch).toHaveBeenCalledWith('p-1', 'develop')
+  })
+
+  it('shows an inline error when switching the branch fails', async () => {
+    vi.mocked(client.setProjectBranch).mockRejectedValue(new client.ApiError(400, '分支不存在。'))
+    const user = userEvent.setup()
+    renderHeader()
+
+    const select = await screen.findByLabelText('默认分支')
+    await user.selectOptions(select, 'develop')
+
+    expect(await screen.findByText(/切换分支失败/)).toBeInTheDocument()
   })
 
   it('calls refreshProject when the refresh button is clicked', async () => {

@@ -462,6 +462,40 @@ def test_provision_mirror_falls_back_to_base_ref_when_base_branch_missing(tmp_pa
     assert (Path(h.location) / "app.py").read_text() == "x = 1\n"
 
 
+def test_list_branches_remote_mirror_lists_origin_branches_without_head(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    subprocess.run(["git", "-C", remote, "branch", "develop"], check=True, capture_output=True)
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": remote}))
+    a.prepare(RepoRef("r"))  # 建 mirror(fetch 全部分支)
+
+    branches = a.list_branches(RepoRef("r"))
+
+    assert branches == ["develop", "main"]
+
+
+def test_list_branches_local_worktree_lists_origin_branches_without_head(tmp_path):
+    remote = _make_remote(tmp_path / "remote")
+    subprocess.run(["git", "-C", remote, "branch", "develop"], check=True, capture_output=True)
+    src = tmp_path / "clone"
+    subprocess.run(["git", "clone", remote, str(src)], check=True, capture_output=True, text=True)
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+
+    branches = a.list_branches(RepoRef("proj"))
+
+    assert branches == ["develop", "main"]
+
+
+def test_list_branches_unprepared_remote_returns_empty(tmp_path):
+    # 仓库已在 repo_map 登记, 但从未 prepare 过(无 mirror) -> 不报错, 空列表。
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"r": "https://unreachable.invalid/nope.git"}))
+    assert a.list_branches(RepoRef("r")) == []
+
+
+def test_list_branches_unmapped_returns_empty(tmp_path):
+    a = GitWorkspaceAdapter(_cfg(tmp_path))
+    assert a.list_branches(RepoRef("nope")) == []
+
+
 def test_provision_create_inits_local_repo_with_worktree(tmp_path):
     a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={}))  # 无远程
     h = a.provision(WorkItemId("new1"), RepoRef("brand-new"), WorkspaceMode.CREATE, "autodev/new1")

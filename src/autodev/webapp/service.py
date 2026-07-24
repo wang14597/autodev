@@ -197,6 +197,36 @@ class ProjectConsoleService:
         self._project_repo.save(project)
         return branch
 
+    def list_branches(self, project_id: str) -> list[str]:
+        try:
+            project = self._project_repo.get(ProjectId(project_id))
+        except KeyError as e:
+            raise LookupError(project_id) from e
+        return self._workspace.list_branches(RepoRef(project.name))
+
+    def set_project_branch(self, project_id: str, branch: str) -> str:
+        if not branch or not branch.strip():
+            raise ValueError("branch must not be empty")
+        try:
+            project = self._project_repo.get(ProjectId(project_id))
+        except KeyError as e:
+            raise LookupError(project_id) from e
+
+        # 切换前先刷新 origin/* 引用(best-effort): 保证候选分支列表是最新的,
+        # 网络不可达/离线时不阻断——退回上次 fetch 到的已知分支集合。
+        try:
+            self._workspace.prepare(RepoRef(project.name), None)
+        except StageError:
+            pass
+
+        branches = self._workspace.list_branches(RepoRef(project.name))
+        if branch not in branches:
+            raise ValueError(f"分支不存在: {branch}")
+
+        project.mark_prepared(branch, self._clock())
+        self._project_repo.save(project)
+        return branch
+
     def delete_project(self, project_id: str) -> bool:
         try:
             project = self._project_repo.get(ProjectId(project_id))

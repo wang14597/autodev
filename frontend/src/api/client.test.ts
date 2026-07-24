@@ -6,9 +6,11 @@ import {
   createWorkItem,
   deleteProject,
   getProject,
+  getProjectBranches,
   getProjects,
   getWorkItem,
   refreshProject,
+  setProjectBranch,
 } from './client'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -112,6 +114,64 @@ describe('api/client', () => {
     const [url, init] = mock.mock.calls[0]
     expect(url).toBe('/api/projects/p-1/refresh')
     expect(init?.method).toBe('POST')
+  })
+
+  it('getProjectBranches calls GET /api/projects/{id}/branches and returns string[]', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse(['develop', 'main']))
+
+    const result = await getProjectBranches('p-1')
+
+    expect(result).toEqual(['develop', 'main'])
+    const [url, init] = mock.mock.calls[0]
+    expect(url).toBe('/api/projects/p-1/branches')
+    expect(init?.method ?? 'GET').toBe('GET')
+  })
+
+  it('getProjectBranches resolves to [] when the project has no branches', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse([]))
+
+    const result = await getProjectBranches('p-1')
+
+    expect(result).toEqual([])
+  })
+
+  it('setProjectBranch POSTs {branch} to /api/projects/{id}/branch and returns {branch}', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ branch: 'develop' }))
+
+    const result = await setProjectBranch('p-1', 'develop')
+
+    expect(result).toEqual({ branch: 'develop' })
+    const [url, init] = mock.mock.calls[0]
+    expect(url).toBe('/api/projects/p-1/branch')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ branch: 'develop' })
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers['Content-Type']).toBe('application/json')
+  })
+
+  it('setProjectBranch throws ApiError 400 for an invalid/empty branch', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ detail: '分支不存在。' }, 400))
+
+    await expect(setProjectBranch('p-1', 'nope')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 400,
+      detail: '分支不存在。',
+    })
+  })
+
+  it('setProjectBranch throws ApiError 404 for an unknown project', async () => {
+    const mock = vi.mocked(fetch)
+    mock.mockResolvedValueOnce(jsonResponse({ detail: 'project not found' }, 404))
+
+    await expect(setProjectBranch('nope', 'main')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      detail: 'project not found',
+    })
   })
 
   it('deleteProject DELETEs /api/projects/{id} and resolves to undefined', async () => {
