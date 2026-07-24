@@ -5,7 +5,7 @@
 
 ## 1. 系统架构 / 六边形（Ports & Adapters）
 
-核心编排域位于中心，通过 9 个出站端口与外部世界解耦；目前 `WorkItemRepository`（SQLite / 内存两种实现）与 `EventPublisher`（内存事件总线）已有生产可用的适配器，其余 7 个端口在当前切片仅有测试用的 Fake 实现（`tests/fakes.py`），尚待真实 ACL 适配器落地。
+核心编排域位于中心，通过 9 个出站端口与外部世界解耦；目前 `WorkItemRepository`（SQLite / 内存两种实现）、`EventPublisher`（内存事件总线）、`WorkspacePort`（GitWorkspaceAdapter，F1）、`ContextPort`（ClaudeContextAdapter，F3）已有生产可用的适配器，其余 5 个端口在当前仅有测试用的 Fake 实现（`tests/fakes.py`），尚待真实 ACL 适配器落地。
 
 ```mermaid
 flowchart LR
@@ -27,8 +27,8 @@ flowchart LR
 
     P1 --> A1["SQLite 适配器 + 内存适配器<br/>(sqlite_repository.py / memory_repository.py)"]:::impl
     P2 --> A2["InMemoryEventBus<br/>(event_bus.py)"]:::impl
-    P3 --> A3["Workspace ACL — 仅 FakeWorkspace"]:::fake
-    P4 --> A4["Context ACL — 仅 FakeContext"]:::fake
+    P3 --> A3["Workspace ACL — GitWorkspaceAdapter<br/>(workspace_git.py，F1)"]:::impl
+    P4 --> A4["Context ACL — ClaudeContextAdapter<br/>(context_claude.py，F3)"]:::impl
     P5 --> A5["Design ACL — 仅 FakeDesign"]:::fake
     P6 --> A6["Review ACL — 仅 FakeReview"]:::fake
     P7 --> A7["Execution ACL — 仅 FakeExecution"]:::fake
@@ -39,7 +39,7 @@ flowchart LR
     classDef fake fill:#f5e3c0,stroke:#b8860b,stroke-width:2px,stroke-dasharray: 4 3;
 ```
 
-图例：绿色 = 已实现（2 个：`WorkItemRepository`、`EventPublisher`）；橙色虚线 = 当前仅有 Fake、待补真实 ACL 适配器（7 个：Workspace/Context/Design/Review/Execution/Verification/Delivery）。
+图例：绿色 = 已实现（4 个：`WorkItemRepository`、`EventPublisher`、`WorkspacePort`、`ContextPort`）；橙色虚线 = 当前仅有 Fake、待补真实 ACL 适配器（5 个：Design/Review/Execution/Verification/Delivery）。另有一个驱动侧适配器 —— WorkItem 控制台（`src/autodev/webapp/` + `frontend/`），用 F1+F3 驱动工作项至 CONTEXT。
 
 ## 2. 限界上下文映射
 
