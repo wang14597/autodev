@@ -154,6 +154,40 @@ class GitWorkspaceAdapter:
         # 直接当 worktree 起点用); prepare 对外承诺的是"跟踪分支名"本身, 去掉前缀。
         return self._base_ref(mirror).removeprefix("origin/")
 
+    def list_branches(self, repo: RepoRef) -> list[str]:
+        """列出该仓库当前已知的 origin/* 分支(不含 "origin/" 前缀, 不含 HEAD)。
+
+        worktree: 本地仓库用其 `.git` 所在目录; 否则用已建好的 mirror。两者皆无
+        (未 prepare 过/仓库未登记)时视为"尚不可列", 返回空列表而非报错。
+        """
+        src = self._local_source(repo.name)
+        if src is not None:
+            git_dir = src
+        else:
+            mirror = self._mirror_path(repo.name)
+            if not mirror.exists():
+                return []
+            git_dir = mirror
+        try:
+            out = self._git(
+                ["-C", str(git_dir), "for-each-ref", "--format=%(refname)", "refs/remotes/origin"]
+            )
+        except StageError:
+            return []
+        # 用完整 refname 而非 refname:short: origin/HEAD 的短名会被 git 折叠成
+        # "origin"(丢了 "/HEAD"), 没法靠字符串排除; 完整名去掉固定前缀更可靠。
+        prefix = "refs/remotes/origin/"
+        names: set[str] = set()
+        for line in out.splitlines():
+            line = line.strip()
+            if not line.startswith(prefix):
+                continue
+            name = line[len(prefix) :]
+            if name == "HEAD":
+                continue
+            names.add(name)
+        return sorted(names)
+
     def provision(
         self,
         work_item_id: WorkItemId,

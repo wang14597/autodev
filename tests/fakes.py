@@ -23,9 +23,16 @@ from autodev.domain.value_objects import (
 
 
 class FakeWorkspace:
-    def __init__(self, local: bool = True, remote: bool = True, default_branch: str = "main"):
+    def __init__(
+        self,
+        local: bool = True,
+        remote: bool = True,
+        default_branch: str = "main",
+        branches: list[str] | None = None,
+    ):
         self.local, self.remote = local, remote
         self.default_branch = default_branch
+        self.branches = branches if branches is not None else ["main", "develop"]
         self.cleaned: list[str] = []
         self.prepared: list[tuple[str, str | None]] = []
         self.provisioned: list[tuple[str, str | None]] = []
@@ -50,6 +57,9 @@ class FakeWorkspace:
     def prepare(self, repo: RepoRef, branch: str | None = None) -> str:
         self.prepared.append((repo.name, branch))
         return branch or self.default_branch
+
+    def list_branches(self, repo: RepoRef) -> list[str]:
+        return self.branches
 
 
 class FakeContext:

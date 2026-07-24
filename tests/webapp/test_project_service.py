@@ -323,6 +323,93 @@ def test_delete_project_skips_cleanup_when_no_context_artifact(tmp_path: Path):
     assert workspace.cleaned == []
 
 
+def test_list_branches_returns_workspace_branches(tmp_path: Path):
+    workspace = FakeWorkspace(branches=["main", "develop"])
+    svc, *_ = _service(tmp_path, workspace=workspace)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    assert svc.list_branches(project_id) == ["main", "develop"]
+
+
+def test_list_branches_unknown_project_raises_lookup_error(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    with pytest.raises(LookupError):
+        svc.list_branches("nope")
+
+
+def test_set_project_branch_updates_project_branch(tmp_path: Path):
+    workspace = FakeWorkspace(branches=["main", "develop"])
+    svc, project_repo, _work_repo, workspace, _registry = _service(tmp_path, workspace=workspace)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    result = svc.set_project_branch(project_id, "develop")
+
+    assert result == "develop"
+    project = project_repo.get_by_name("demo")
+    assert project is not None
+    assert project.branch == "develop"
+
+
+def test_set_project_branch_refetches_before_validating(tmp_path: Path):
+    workspace = FakeWorkspace(branches=["main", "develop"])
+    svc, _project_repo, _work_repo, workspace, _registry = _service(tmp_path, workspace=workspace)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+    prepared_before = len(workspace.prepared)
+
+    svc.set_project_branch(project_id, "develop")
+
+    assert len(workspace.prepared) == prepared_before + 1
+
+
+def test_set_project_branch_tolerates_fetch_failure(tmp_path: Path):
+    from autodev.domain.enums import FailureKind
+    from autodev.domain.errors import StageError
+
+    class FetchFailsOnSetBranch(FakeWorkspace):
+        def __init__(self):
+            super().__init__(branches=["main", "develop"])
+            self._calls = 0
+
+        def prepare(self, repo, branch=None):  # type: ignore[override]
+            self._calls += 1
+            if self._calls > 1:
+                raise StageError(FailureKind.TRANSIENT, "网络不可达")
+            return super().prepare(repo, branch)
+
+    svc, project_repo, _wr, _ws, _reg = _service(tmp_path, workspace=FetchFailsOnSetBranch())
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    result = svc.set_project_branch(project_id, "develop")
+
+    assert result == "develop"
+    assert project_repo.get_by_name("demo").branch == "develop"
+
+
+def test_set_project_branch_rejects_unknown_branch(tmp_path: Path):
+    workspace = FakeWorkspace(branches=["main", "develop"])
+    svc, *_ = _service(tmp_path, workspace=workspace)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    with pytest.raises(ValueError):
+        svc.set_project_branch(project_id, "no-such-branch")
+
+
+def test_set_project_branch_rejects_empty_branch(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    with pytest.raises(ValueError):
+        svc.set_project_branch(project_id, "")
+    with pytest.raises(ValueError):
+        svc.set_project_branch(project_id, "   ")
+
+
+def test_set_project_branch_unknown_project_raises_lookup_error(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    with pytest.raises(LookupError):
+        svc.set_project_branch("nope", "develop")
+
+
 def test_delete_project_cleanup_failure_is_best_effort(tmp_path: Path):
     svc, project_repo, work_repo, workspace, registry = _service(tmp_path)
     project_id = svc.create_project("demo", "git@host:team/demo.git")

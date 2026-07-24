@@ -87,6 +87,21 @@ class FakeProjectConsoleService:
         p.mark_prepared("develop", NOW)
         return "develop"
 
+    def list_branches(self, project_id: str) -> list[str]:
+        p = self._projects.get(project_id)
+        if p is None:
+            raise LookupError(project_id)
+        return ["main", "develop"]
+
+    def set_project_branch(self, project_id: str, branch: str) -> str:
+        p = self._projects.get(project_id)
+        if p is None:
+            raise LookupError(project_id)
+        if branch not in ("main", "develop"):
+            raise ValueError(f"分支不存在: {branch}")
+        p.mark_prepared(branch, NOW)
+        return branch
+
     def delete_project(self, project_id: str) -> bool:
         p = self._projects.pop(project_id, None)
         if p is None:
@@ -237,6 +252,52 @@ def test_post_project_refresh_unknown_returns_404() -> None:
     client = _client(FakeProjectConsoleService())
 
     resp = client.post("/api/projects/does-not-exist/refresh")
+
+    assert resp.status_code == 404
+
+
+def test_get_project_branches_returns_list() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.get(f"/api/projects/{p.id.value}/branches")
+
+    assert resp.status_code == 200
+    assert resp.json() == ["main", "develop"]
+
+
+def test_get_project_branches_unknown_returns_404() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.get("/api/projects/does-not-exist/branches")
+
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "project not found"}
+
+
+def test_post_project_branch_switches_and_returns_branch() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.post(f"/api/projects/{p.id.value}/branch", json={"branch": "develop"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"branch": "develop"}
+
+
+def test_post_project_branch_rejects_unknown_branch() -> None:
+    p = _project("demo")
+    client = _client(FakeProjectConsoleService([p]))
+
+    resp = client.post(f"/api/projects/{p.id.value}/branch", json={"branch": "no-such-branch"})
+
+    assert resp.status_code == 400
+
+
+def test_post_project_branch_unknown_project_returns_404() -> None:
+    client = _client(FakeProjectConsoleService())
+
+    resp = client.post("/api/projects/does-not-exist/branch", json={"branch": "develop"})
 
     assert resp.status_code == 404
 

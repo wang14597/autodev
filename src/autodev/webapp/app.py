@@ -38,6 +38,10 @@ class ConsoleService(Protocol):
 
     def delete_project(self, project_id: str) -> bool: ...
 
+    def list_branches(self, project_id: str) -> list[str]: ...
+
+    def set_project_branch(self, project_id: str, branch: str) -> str: ...
+
     def create_workitem(self, project_id: str, goal: str) -> str: ...
 
     def list_workitems(self, project_id: str) -> list[WorkItem]: ...
@@ -53,6 +57,10 @@ class CreateProjectRequest(BaseModel):
 
 class CreateWorkItemRequest(BaseModel):
     goal: str
+
+
+class SetBranchRequest(BaseModel):
+    branch: str
 
 
 def _frontend_dist() -> Path | None:
@@ -92,6 +100,23 @@ def create_app(service: ConsoleService) -> FastAPI:
     def refresh_project(project_id: str) -> dict[str, str]:
         try:
             branch = service.refresh_project(project_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail="project not found") from e
+        return {"branch": branch}
+
+    @app.get("/api/projects/{project_id}/branches")
+    def get_project_branches(project_id: str) -> list[str]:
+        try:
+            return service.list_branches(project_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail="project not found") from e
+
+    @app.post("/api/projects/{project_id}/branch")
+    def set_project_branch(project_id: str, payload: SetBranchRequest) -> dict[str, str]:
+        try:
+            branch = service.set_project_branch(project_id, payload.branch)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except LookupError as e:
             raise HTTPException(status_code=404, detail="project not found") from e
         return {"branch": branch}
