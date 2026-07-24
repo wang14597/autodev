@@ -10,14 +10,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, cast
 
 from autodev.application.engine import Engine
+from autodev.domain.artifacts import ContextArtifact
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.ids import WorkItemId
-from autodev.domain.ports import WorkItemRepository
-from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
+from autodev.domain.ids import ProjectId, WorkItemId
+from autodev.domain.ports import ProjectRepository, WorkItemRepository, WorkspacePort
+from autodev.domain.project import Project
+from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement, WorkspaceHandle
 from autodev.domain.work_item import WorkItem
+from autodev.webapp.projects import ProjectRegistry
 
 # 有界驱动允许自动跑的阶段集合：仅到 CONTEXT 为止，绝不进入 DESIGN 及之后。
 RUN: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
@@ -36,6 +39,22 @@ class SyncExecutor:
 
     def submit(self, fn: Callable[[], None]) -> None:
         fn()
+
+
+def _bounded_drive(repo: WorkItemRepository, engine: Engine, work_item_id: WorkItemId) -> None:
+    """有界自动驱动循环：止于 CONTEXT，绝不越界调用 DESIGN 及之后的桩端口。
+
+    抽成自由函数供 WorkItemConsoleService/ProjectConsoleService 共用，避免两个
+    服务各自维护一份等价的驱动循环。
+    """
+    while True:
+        try:
+            work_item = repo.get(work_item_id)
+        except KeyError:
+            return
+        if not work_item.is_runnable() or work_item.state not in RUN:
+            return
+        engine.advance(work_item)
 
 
 class WorkItemConsoleService:
@@ -90,11 +109,138 @@ class WorkItemConsoleService:
         return items
 
     def _drive(self, work_item_id: WorkItemId) -> None:
-        while True:
-            try:
-                work_item = self._repo.get(work_item_id)
-            except KeyError:
-                return
-            if not work_item.is_runnable() or work_item.state not in RUN:
-                return
-            self._engine.advance(work_item)
+        _bounded_drive(self._repo, self._engine, work_item_id)
+
+
+class ProjectConsoleService:
+    """项目为中心的控制台应用服务：两步创建(建项目→建工作项)+ 共享一次性 setup +
+
+    删除级联。替代/扩展 WorkItemConsoleService(后者暂保留, Task 4 切换 app.py)。
+    """
+
+    def __init__(
+        self,
+        project_repo: ProjectRepository,
+        work_repo: WorkItemRepository,
+        workspace: WorkspacePort,
+        engine: Engine,
+        executor: Executor,
+        registry: ProjectRegistry,
+        clock: Callable[[], datetime] = _default_clock,
+        id_gen_project: Callable[[], ProjectId] = ProjectId.new,
+        id_gen_work: Callable[[], WorkItemId] = WorkItemId.new,
+    ) -> None:
+        self._project_repo = project_repo
+        self._work_repo = work_repo
+        self._workspace = workspace
+        self._engine = engine
+        self._executor = executor
+        self._registry = registry
+        self._clock = clock
+        self._id_gen_project = id_gen_project
+        self._id_gen_work = id_gen_work
+
+    def create_project(self, name: str, repo_input: str) -> str:
+        if not name or not name.strip():
+            raise ValueError("name must not be empty")
+        if not repo_input or not repo_input.strip():
+            raise ValueError("repo_input must not be empty")
+        name = name.strip()
+        if name in self._registry.repo_map or self._project_repo.get_by_name(name) is not None:
+            raise ValueError("项目名已存在")
+
+        repo_source = self._registry.register(name, repo_input)
+        default_branch = self._workspace.prepare(RepoRef(name))
+        now = self._clock()
+        project = Project.create(self._id_gen_project(), name, repo_source, now)
+        project.mark_prepared(default_branch, now)
+        self._project_repo.save(project)
+        return project.id.value
+
+    def list_projects(self) -> list[tuple[Project, int]]:
+        projects = self._project_repo.list_all()
+        work_items = self._work_repo.list_all()
+        counts: dict[str, int] = {}
+        for wi in work_items:
+            if wi.project_id is not None:
+                counts[wi.project_id.value] = counts.get(wi.project_id.value, 0) + 1
+        results = [(p, counts.get(p.id.value, 0)) for p in projects]
+        results.sort(
+            key=lambda pair: pair[0].created_at.timestamp() if pair[0].created_at else 0.0,
+            reverse=True,
+        )
+        return results
+
+    def get_project(self, project_id: str) -> Project | None:
+        try:
+            return self._project_repo.get(ProjectId(project_id))
+        except KeyError:
+            return None
+
+    def refresh_project(self, project_id: str) -> str:
+        try:
+            project = self._project_repo.get(ProjectId(project_id))
+        except KeyError as e:
+            raise LookupError(project_id) from e
+        default_branch = self._workspace.prepare(RepoRef(project.name))
+        project.mark_prepared(default_branch, self._clock())
+        self._project_repo.save(project)
+        return default_branch
+
+    def delete_project(self, project_id: str) -> bool:
+        try:
+            project = self._project_repo.get(ProjectId(project_id))
+        except KeyError:
+            return False
+
+        pid = project.id
+        for wi in self._work_repo.list_all():
+            if wi.project_id != pid:
+                continue
+            if "context" in wi.artifacts:
+                artifact = cast(ContextArtifact, wi.artifacts["context"])
+                try:
+                    self._workspace.cleanup(
+                        WorkspaceHandle(artifact.workspace_location, artifact.workspace_label)
+                    )
+                except Exception:  # noqa: BLE001 best-effort：清理失败不阻断删除
+                    pass
+            self._work_repo.delete(wi.id)
+
+        self._registry.unregister(project.name)
+        self._project_repo.delete(pid)
+        return True
+
+    def create_workitem(self, project_id: str, goal: str) -> str:
+        if not goal or not goal.strip():
+            raise ValueError("goal must not be empty")
+        try:
+            project = self._project_repo.get(ProjectId(project_id))
+        except KeyError as e:
+            raise LookupError(project_id) from e
+
+        work_item_id = self._id_gen_work()
+        requirement = Requirement(goal, project.name, (), goal)
+        work_item = WorkItem.create(
+            work_item_id,
+            RepoRef(project.name),
+            requirement,
+            AutonomyDial.all_human(),
+            self._clock(),
+            project_id=project.id,
+        )
+        self._work_repo.save(work_item)
+        self._executor.submit(lambda: _bounded_drive(self._work_repo, self._engine, work_item_id))
+        return work_item_id.value
+
+    def list_workitems(self, project_id: str) -> list[WorkItem]:
+        pid = ProjectId(project_id)
+        items = [wi for wi in self._work_repo.list_all() if wi.project_id == pid]
+        items.sort(key=lambda wi: wi.created_at.timestamp() if wi.created_at else 0.0, reverse=True)
+        return items
+
+    def get_workitem(self, work_item_id: str) -> WorkItem | None:
+        try:
+            return self._work_repo.get(WorkItemId(work_item_id))
+        except KeyError:
+            return None

@@ -8,6 +8,7 @@ from typing import cast
 
 from autodev.domain.artifacts import ContextArtifact
 from autodev.domain.enums import WorkflowState as S
+from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
 
 # 线性主链: INTAKE..DONE。WAIT_HUMAN/FAILED 是覆盖态，不出现在这条链里。
@@ -93,4 +94,21 @@ def view_detail(wi: WorkItem, read_text: Callable[[str], str]) -> dict[str, obje
     detail["stages"] = stage_views(wi)
     detail["context"] = context
     detail["failure"] = failure
+    return detail
+
+
+def view_project(project: Project, workitem_count: int) -> dict[str, object]:
+    return {
+        "id": project.id.value,
+        "name": project.name,
+        "repo_source": project.repo_source,
+        "default_branch": project.default_branch,
+        "workitem_count": workitem_count,
+        "created_at": project.created_at.isoformat() if project.created_at else None,
+    }
+
+
+def view_project_detail(project: Project, workitems: list[WorkItem]) -> dict[str, object]:
+    detail = view_project(project, workitem_count=len(workitems))
+    detail["workitems"] = [view_summary(wi) for wi in workitems]
     return detail

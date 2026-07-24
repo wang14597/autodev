@@ -1,0 +1,276 @@
+# tests/webapp/test_project_service.py
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+from autodev.adapters.memory_repository import InMemoryWorkItemRepository
+from autodev.adapters.project_repository import InMemoryProjectRepository
+from autodev.application.context import StageContext
+from autodev.application.engine import Engine
+from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.enums import WorkflowState as S
+from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.webapp.projects import ProjectRegistry
+from autodev.webapp.service import ProjectConsoleService, SyncExecutor
+from autodev.webapp.stubs import UnavailableStage
+from tests.fakes import FakeContext, FakeWorkspace
+
+NOW = datetime(2026, 7, 24, 12, 0, 0)
+
+
+def _engine(work_repo, workspace):
+    stage = UnavailableStage()
+    ctx = StageContext(
+        workspace,
+        FakeContext(),
+        stage,
+        stage,
+        stage,
+        stage,
+        stage,
+        TriagePolicy(),
+        GatePolicy(),
+    )
+    return Engine(work_repo, _NoopPublisher(), ctx, clock=lambda: NOW)
+
+
+class _NoopPublisher:
+    def publish(self, event) -> None:
+        pass
+
+
+def _increasing_clock():
+    state = {"n": 0}
+
+    def clock() -> datetime:
+        state["n"] += 1
+        return NOW + timedelta(seconds=state["n"])
+
+    return clock
+
+
+def _service(tmp_path: Path, clock=lambda: NOW, workspace: FakeWorkspace | None = None):
+    project_repo = InMemoryProjectRepository()
+    work_repo = InMemoryWorkItemRepository()
+    workspace = workspace if workspace is not None else FakeWorkspace()
+    engine = _engine(work_repo, workspace)
+    registry = ProjectRegistry({}, tmp_path / "repos.json")
+    svc = ProjectConsoleService(
+        project_repo,
+        work_repo,
+        workspace,
+        engine,
+        SyncExecutor(),
+        registry,
+        clock=clock,
+    )
+    return svc, project_repo, work_repo, workspace, registry
+
+
+def test_create_project_prepares_workspace_and_persists(tmp_path: Path):
+    svc, project_repo, _work_repo, workspace, registry = _service(tmp_path)
+
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    assert workspace.prepared == ["demo"]
+    project = project_repo.get_by_name("demo")
+    assert project is not None
+    assert project.id.value == project_id
+    assert project.default_branch == "main"
+    assert registry.repo_map["demo"] == "git@host:team/demo.git"
+
+
+def test_create_project_rejects_duplicate_name(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    svc.create_project("demo", "git@host:team/demo.git")
+
+    with pytest.raises(ValueError):
+        svc.create_project("demo", "git@host:team/other.git")
+
+
+def test_create_project_rejects_empty_name_or_repo(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+
+    with pytest.raises(ValueError):
+        svc.create_project("", "git@host:team/demo.git")
+    with pytest.raises(ValueError):
+        svc.create_project("   ", "git@host:team/demo.git")
+    with pytest.raises(ValueError):
+        svc.create_project("demo", "")
+    with pytest.raises(ValueError):
+        svc.create_project("demo", "   ")
+
+
+def test_create_workitem_drives_to_design_and_sets_project_id(tmp_path: Path):
+    svc, project_repo, _work_repo, _workspace, _registry = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    work_item_id = svc.create_workitem(project_id, "加限流")
+    wi = svc.get_workitem(work_item_id)
+
+    assert wi is not None
+    assert wi.state == S.DESIGN
+    project = project_repo.get_by_name("demo")
+    assert wi.project_id == project.id
+    assert wi.repo_ref.name == project.name
+
+
+def test_create_workitem_rejects_empty_goal(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    with pytest.raises(ValueError):
+        svc.create_workitem(project_id, "")
+    with pytest.raises(ValueError):
+        svc.create_workitem(project_id, "   ")
+
+
+def test_create_workitem_unknown_project_raises_lookup_error(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+
+    with pytest.raises(LookupError):
+        svc.create_workitem("unknown-id", "加限流")
+
+
+def test_list_workitems_filters_by_project(tmp_path: Path):
+    svc, *_ = _service(tmp_path, clock=_increasing_clock())
+    p1 = svc.create_project("demo1", "git@host:team/demo1.git")
+    p2 = svc.create_project("demo2", "git@host:team/demo2.git")
+
+    id_a = svc.create_workitem(p1, "需求 A")
+    id_b = svc.create_workitem(p1, "需求 B")
+    svc.create_workitem(p2, "需求 C")
+
+    items = svc.list_workitems(p1)
+    assert {wi.id.value for wi in items} == {id_a, id_b}
+    assert [wi.id.value for wi in items] == [id_b, id_a]  # 新到旧
+
+
+def test_list_projects_returns_workitem_counts(tmp_path: Path):
+    svc, *_ = _service(tmp_path, clock=_increasing_clock())
+    p1 = svc.create_project("demo1", "git@host:team/demo1.git")
+    p2 = svc.create_project("demo2", "git@host:team/demo2.git")
+    svc.create_workitem(p1, "需求 A")
+    svc.create_workitem(p1, "需求 B")
+
+    results = svc.list_projects()
+    counts = {p.id.value: n for p, n in results}
+    assert counts[p1] == 2
+    assert counts[p2] == 0
+    # newest project first
+    assert [p.id.value for p, _ in results][0] == p2
+
+
+def test_get_project_returns_none_for_unknown(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    assert svc.get_project("nope") is None
+
+
+def test_get_project_returns_project(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+    project = svc.get_project(project_id)
+    assert project is not None
+    assert project.name == "demo"
+
+
+def test_refresh_project_updates_default_branch(tmp_path: Path):
+    workspace = FakeWorkspace(default_branch="main")
+    svc, project_repo, _work_repo, workspace, _registry = _service(tmp_path, workspace=workspace)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+
+    workspace.default_branch = "develop"
+    branch = svc.refresh_project(project_id)
+
+    assert branch == "develop"
+    project = project_repo.get_by_name("demo")
+    assert project.default_branch == "develop"
+    assert workspace.prepared == ["demo", "demo"]
+
+
+def test_refresh_unknown_project_raises_lookup_error(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    with pytest.raises(LookupError):
+        svc.refresh_project("nope")
+
+
+def test_delete_project_cascades_workitems_and_cleanup(tmp_path: Path):
+    svc, project_repo, work_repo, workspace, registry = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+    wid = svc.create_workitem(project_id, "加限流")  # 驱动到 DESIGN, 带 context artifact
+
+    result = svc.delete_project(project_id)
+
+    assert result is True
+    assert svc.get_workitem(wid) is None
+    assert work_repo.list_all() == []
+    assert "demo" not in registry.repo_map
+    assert svc.get_project(project_id) is None
+    # 该工作项在 CONTEXT 阶段生成了 context artifact → cleanup 应被调用一次
+    assert len(workspace.cleaned) == 1
+
+
+def test_delete_project_unknown_returns_false(tmp_path: Path):
+    svc, *_ = _service(tmp_path)
+    assert svc.delete_project("nope") is False
+
+
+def test_delete_project_skips_cleanup_when_no_context_artifact(tmp_path: Path):
+    # 手工构造一个还没有 context artifact 的工作项(用 executor 不会自动驱动的场景模拟:
+    # 这里直接检验 delete 对没有 "context" key 的工作项不调用 cleanup)。
+    svc, project_repo, work_repo, workspace, registry = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+    project = project_repo.get_by_name("demo")
+
+    from autodev.domain.ids import WorkItemId
+    from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
+    from autodev.domain.work_item import WorkItem
+
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("demo"),
+        Requirement("g", "demo", (), "g"),
+        AutonomyDial.all_human(),
+        NOW,
+        project_id=project.id,
+    )
+    work_repo.save(wi)
+
+    result = svc.delete_project(project_id)
+
+    assert result is True
+    assert workspace.cleaned == []
+
+
+def test_delete_project_cleanup_failure_is_best_effort(tmp_path: Path):
+    svc, project_repo, work_repo, workspace, registry = _service(tmp_path)
+    project_id = svc.create_project("demo", "git@host:team/demo.git")
+    project = project_repo.get_by_name("demo")
+
+    from autodev.domain.ids import WorkItemId
+    from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
+    from autodev.domain.work_item import WorkItem
+
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("demo"),
+        Requirement("g", "demo", (), "g"),
+        AutonomyDial.all_human(),
+        NOW,
+        project_id=project.id,
+    )
+    wi.add_artifact("context", ContextArtifact("/tmp/gone", "branch", "/tmp/gone/context.md"))
+    work_repo.save(wi)
+
+    def boom(handle):
+        raise OSError("worktree already gone")
+
+    workspace.cleanup = boom  # type: ignore[method-assign]
+
+    result = svc.delete_project(project_id)
+
+    assert result is True  # best-effort: cleanup 异常不阻断删除
+    assert svc.get_project(project_id) is None

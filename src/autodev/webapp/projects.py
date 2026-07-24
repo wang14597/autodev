@@ -50,13 +50,39 @@ class ProjectRegistry:
             return raw
         path = Path(raw).expanduser()
         if path.is_dir() and self._is_git_repo(path):
-            resolved = path.resolve()
-            name = resolved.name
-            # worktree: 标记 → F1 直接在该本地仓库上开 worktree(共享对象库, 不碰工作目录文件)。
-            self._repo_map[name] = f"{WORKTREE_SCHEME}{resolved}"
+            name = path.resolve().name
+            self._repo_map[name] = self._resolve_repo_source(raw)
             self._persist()
             return name
         return raw  # 既非已登记名, 也不是本地 git 仓库 → 原样交给下游(CREATE/或报错)
+
+    def register(self, name: str, repo_input: str) -> str:
+        """显式两步登记：调用方给定项目名, 仅解析 `repo_input` 得 repo_source。
+
+        与 `resolve()` 共享"输入 → repo_source"解析逻辑(`_resolve_repo_source`)；
+        区别在于 `resolve()` 从本地目录名派生项目名, 而 `register()` 的项目名由
+        调用方(两步创建流程里的 create_project)显式提供。
+        """
+        repo_source = self._resolve_repo_source(repo_input)
+        self._repo_map[name] = repo_source
+        self._persist()
+        return repo_source
+
+    def unregister(self, name: str) -> None:
+        self._repo_map.pop(name, None)
+        self._persist()
+
+    def _resolve_repo_source(self, repo_input: str) -> str:
+        """把任意仓库输入解析为 repo_map 值语义的 repo_source。
+
+        本地 git 目录 → `worktree:<resolved path>`(共享对象库开 worktree,
+        不整仓克隆)；否则原样返回(远程 URL 或已是 repo_source 形式的字符串)。
+        """
+        raw = repo_input.strip()
+        path = Path(raw).expanduser()
+        if path.is_dir() and self._is_git_repo(path):
+            return f"{WORKTREE_SCHEME}{path.resolve()}"
+        return raw
 
     def _persist(self) -> None:
         if self._persist_path is None:

@@ -5,10 +5,17 @@ from datetime import datetime
 
 from autodev.domain.artifacts import ContextArtifact
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.ids import WorkItemId
+from autodev.domain.ids import ProjectId, WorkItemId
+from autodev.domain.project import Project
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
-from autodev.webapp.views import stage_views, view_detail, view_summary
+from autodev.webapp.views import (
+    stage_views,
+    view_detail,
+    view_project,
+    view_project_detail,
+    view_summary,
+)
 
 NOW = datetime(2026, 7, 22, 9, 0, 0)
 
@@ -126,3 +133,49 @@ def test_view_detail_failure_reason_when_failed():
 
     assert detail["failure"] == {"reason": "failed: boom"}
     assert detail["state"] == "FAILED"
+
+
+def test_view_project_fields():
+    project = Project.create(ProjectId("p1"), "demo", "worktree:/tmp/demo", NOW)
+    project.mark_prepared("main", NOW)
+
+    view = view_project(project, workitem_count=3)
+
+    assert view == {
+        "id": "p1",
+        "name": "demo",
+        "repo_source": "worktree:/tmp/demo",
+        "default_branch": "main",
+        "workitem_count": 3,
+        "created_at": NOW.isoformat(),
+    }
+
+
+def test_view_project_created_at_none_when_missing():
+    project = Project(id=ProjectId("p2"), name="demo", repo_source="url")
+
+    view = view_project(project, workitem_count=0)
+
+    assert view["created_at"] is None
+    assert view["default_branch"] is None
+
+
+def test_view_project_detail_includes_workitem_summaries():
+    project = Project.create(ProjectId("p1"), "demo", "worktree:/tmp/demo", NOW)
+    project.mark_prepared("main", NOW)
+    wi = _work_item(S.CONTEXT)
+
+    detail = view_project_detail(project, [wi])
+
+    assert detail["id"] == "p1"
+    assert detail["workitem_count"] == 1
+    assert detail["workitems"] == [view_summary(wi)]
+
+
+def test_view_project_detail_empty_workitems():
+    project = Project.create(ProjectId("p1"), "demo", "url", NOW)
+
+    detail = view_project_detail(project, [])
+
+    assert detail["workitem_count"] == 0
+    assert detail["workitems"] == []

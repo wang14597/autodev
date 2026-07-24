@@ -75,3 +75,64 @@ def test_load_registry_tolerates_missing_or_bad_file(tmp_path: Path) -> None:
     bad.write_text("{not json", encoding="utf-8")
     reg2 = load_registry({"a": "u"}, bad)
     assert reg2.repo_map == {"a": "u"}
+
+
+def test_register_local_git_dir_maps_worktree_scheme(tmp_path: Path) -> None:
+    repo_dir = _git_dir(tmp_path, "voice-agent")
+    repo_map: dict[str, str] = {}
+    reg = ProjectRegistry(repo_map, tmp_path / "repos.json")
+
+    repo_source = reg.register("my-project", str(repo_dir))
+
+    assert repo_source == f"worktree:{repo_dir.resolve()}"
+    assert repo_map["my-project"] == f"worktree:{repo_dir.resolve()}"
+
+
+def test_register_remote_url_kept_as_is(tmp_path: Path) -> None:
+    repo_map: dict[str, str] = {}
+    reg = ProjectRegistry(repo_map, tmp_path / "repos.json")
+
+    repo_source = reg.register("svc", "git@host:team/svc.git")
+
+    assert repo_source == "git@host:team/svc.git"
+    assert repo_map["svc"] == "git@host:team/svc.git"
+
+
+def test_register_persists_to_disk(tmp_path: Path) -> None:
+    persist = tmp_path / "repos.json"
+    reg = ProjectRegistry({}, persist)
+
+    reg.register("svc", "git@host:team/svc.git")
+
+    saved = json.loads(persist.read_text(encoding="utf-8"))
+    assert saved["svc"] == "git@host:team/svc.git"
+
+
+def test_register_uses_explicit_name_even_for_differently_named_dir(tmp_path: Path) -> None:
+    # register() 的 name 由调用方显式提供(不像 resolve() 从目录名派生)。
+    repo_dir = _git_dir(tmp_path, "voice-agent")
+    repo_map: dict[str, str] = {}
+    reg = ProjectRegistry(repo_map, tmp_path / "repos.json")
+
+    reg.register("custom-name", str(repo_dir))
+
+    assert "custom-name" in repo_map
+    assert "voice-agent" not in repo_map
+
+
+def test_unregister_removes_entry_and_persists(tmp_path: Path) -> None:
+    persist = tmp_path / "repos.json"
+    repo_map = {"svc": "git@host:team/svc.git"}
+    reg = ProjectRegistry(repo_map, persist)
+
+    reg.unregister("svc")
+
+    assert "svc" not in repo_map
+    saved = json.loads(persist.read_text(encoding="utf-8"))
+    assert "svc" not in saved
+
+
+def test_unregister_unknown_name_is_noop(tmp_path: Path) -> None:
+    reg = ProjectRegistry({"svc": "u"}, tmp_path / "repos.json")
+    reg.unregister("nope")  # 不报错
+    assert reg.repo_map == {"svc": "u"}
