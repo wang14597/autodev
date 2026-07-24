@@ -141,6 +141,14 @@ def test_provision_two_local_workitems_parallel(tmp_path):
     assert str(Path(h1.location)) in lst and str(Path(h2.location)) in lst
 
 
+def test_repo_status_local_worktree_repo_is_local_available(tmp_path):
+    # worktree: 本地仓库 → exists_local=True(triage 选 REUSE, 语义干净)。
+    src = _make_remote(tmp_path / "proj")
+    a = GitWorkspaceAdapter(_cfg(tmp_path, repo_map={"proj": f"worktree:{src}"}))
+    st = a.repo_status(RepoRef("proj"))
+    assert st.exists_local is True and st.exists_remote is False
+
+
 def test_repo_status_unmapped_is_all_false(tmp_path):
     a = GitWorkspaceAdapter(_cfg(tmp_path))
     st = a.repo_status(RepoRef("nope"))

@@ -108,6 +108,10 @@ class GitWorkspaceAdapter:
             return self._git(["-C", str(src), "rev-parse", "HEAD"])
 
     def repo_status(self, repo: RepoRef) -> RepoStatus:
+        if self._local_source(repo.name) is not None:
+            # worktree: 本地仓库确实存在 → 视为本地可用(triage 据此选 REUSE);
+            # provision 对本地仓库走 worktree 快路径, mode 仅名义, 不再探测远程。
+            return RepoStatus(exists_local=True, exists_remote=False)
         exists_local = self._mirror_path(repo.name).exists()
         exists_remote = False
         url = self._config.repo_map.get(repo.name)
