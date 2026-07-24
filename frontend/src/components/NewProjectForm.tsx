@@ -52,12 +52,12 @@ export function NewProjectForm() {
           placeholder="git 远程地址，或本地仓库目录路径"
           disabled={mutation.isPending}
         />
-        <p className={styles.hint}>首次登记会做一次性 setup（探测默认分支），之后自动复用。</p>
+        <p className={styles.hint}>登记时会 git fetch 同步远端并确定默认分支。</p>
       </div>
 
       <div className={styles.field}>
         <label className={styles.label} htmlFor="project-branch">
-          分支
+          默认分支
         </label>
         <input
           id="project-branch"

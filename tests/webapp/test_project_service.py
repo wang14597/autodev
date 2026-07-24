@@ -162,6 +162,40 @@ def test_create_workitem_drives_to_design_and_sets_project_id(tmp_path: Path):
     assert saved.base_branch == project.branch
 
 
+def test_create_workitem_auto_fetches_project_branch(tmp_path: Path):
+    # 建工作项时自动 fetch(prepare 项目默认分支), 保证 worktree 基于最新。
+    svc, _project_repo, _work_repo, workspace, _registry = _service(tmp_path)
+    pid = svc.create_project("demo", "git@host:team/demo.git", branch="main")
+    assert workspace.prepared == [("demo", "main")]  # 建项目那次
+
+    svc.create_workitem(pid, "加限流")
+
+    # 建工作项又触发一次 prepare(fetch), 带项目默认分支
+    assert workspace.prepared == [("demo", "main"), ("demo", "main")]
+
+
+def test_create_workitem_tolerates_fetch_failure(tmp_path: Path):
+    # 自动 fetch 失败(网络等)不应阻断建工作项(best-effort)。
+    from autodev.domain.enums import FailureKind
+    from autodev.domain.errors import StageError
+
+    class FetchFailsAfterCreate(FakeWorkspace):
+        def __init__(self):
+            super().__init__()
+            self._calls = 0
+
+        def prepare(self, repo, branch=None):  # type: ignore[override]
+            self._calls += 1
+            if self._calls > 1:  # 第一次(建项目)成功, 之后(建工作项)失败
+                raise StageError(FailureKind.TRANSIENT, "网络不可达")
+            return super().prepare(repo, branch)
+
+    svc, _pr, _wr, _ws, _reg = _service(tmp_path, workspace=FetchFailsAfterCreate())
+    pid = svc.create_project("demo", "git@host:team/demo.git", branch="main")
+    wid = svc.create_workitem(pid, "加限流")  # 不应抛
+    assert svc.get_workitem(wid) is not None
+
+
 def test_create_workitem_rejects_empty_goal(tmp_path: Path):
     svc, *_ = _service(tmp_path)
     project_id = svc.create_project("demo", "git@host:team/demo.git")

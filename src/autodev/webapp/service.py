@@ -229,6 +229,13 @@ class ProjectConsoleService:
         except KeyError as e:
             raise LookupError(project_id) from e
 
+        # 建工作项时自动 fetch: 保证 worktree 基于默认分支的最新 origin/<branch>。
+        # best-effort——拉取失败(网络/离线)不阻断创建, 退回上次 fetch 到的 origin。
+        try:
+            self._workspace.prepare(RepoRef(project.name), project.branch or None)
+        except StageError:
+            pass
+
         work_item_id = self._id_gen_work()
         requirement = Requirement(goal, project.name, (), goal)
         work_item = WorkItem.create(
