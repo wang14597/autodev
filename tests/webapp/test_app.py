@@ -223,14 +223,14 @@ def test_get_project_unknown_returns_404() -> None:
     assert resp.json() == {"detail": "project not found"}
 
 
-def test_post_project_refresh_returns_default_branch() -> None:
+def test_post_project_refresh_returns_branch() -> None:
     p = _project("demo")
     client = _client(FakeProjectConsoleService([p]))
 
     resp = client.post(f"/api/projects/{p.id.value}/refresh")
 
     assert resp.status_code == 200
-    assert resp.json() == {"default_branch": "develop"}
+    assert resp.json() == {"branch": "develop"}
 
 
 def test_post_project_refresh_unknown_returns_404() -> None:

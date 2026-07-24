@@ -91,10 +91,10 @@ def create_app(service: ConsoleService) -> FastAPI:
     @app.post("/api/projects/{project_id}/refresh")
     def refresh_project(project_id: str) -> dict[str, str]:
         try:
-            default_branch = service.refresh_project(project_id)
+            branch = service.refresh_project(project_id)
         except LookupError as e:
             raise HTTPException(status_code=404, detail="project not found") from e
-        return {"default_branch": default_branch}
+        return {"branch": branch}
 
     @app.delete("/api/projects/{project_id}")
     def delete_project(project_id: str) -> dict[str, bool]:
