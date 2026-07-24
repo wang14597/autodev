@@ -209,7 +209,7 @@ sequenceDiagram
 
 ## 5. WorkItem 聚合数据模型
 
-`Project` 与 `WorkItem` 是两个聚合根：`Project` 归集同一仓库下的多个工作项（`WorkItem.project_id` 引用），并缓存 `default_branch` 等一次性 setup 结果；`WorkItem` 的 `artifact_versions` 按阶段键存版本列表（只追加不改）；`history` 记录每次合法转移；值对象 `Requirement`/`RepoRef`/`AutonomyDial`/`RetryLedger`/`Cost` 为聚合的不可变属性。8 个产物类型（`artifacts.py`）彼此之间没有共同的运行时基类，图中按各自的 `artifact_versions` 键名与聚合关联，仅表达逻辑上的“版本化产物族”，不代表代码里的继承关系。
+`Project` 与 `WorkItem` 是两个聚合根：`Project` 关联"仓库 + 跟踪分支 `branch`"，归集同一仓库下的多个工作项（`WorkItem.project_id` 引用）；工作项建 worktree 时以 `base_branch`（= 项目跟踪分支的最新 `origin/<branch>`）为基点；`WorkItem` 的 `artifact_versions` 按阶段键存版本列表（只追加不改）；`history` 记录每次合法转移；值对象 `Requirement`/`RepoRef`/`AutonomyDial`/`RetryLedger`/`Cost` 为聚合的不可变属性。8 个产物类型（`artifacts.py`）彼此之间没有共同的运行时基类，图中按各自的 `artifact_versions` 键名与聚合关联，仅表达逻辑上的“版本化产物族”，不代表代码里的继承关系。
 
 ```mermaid
 classDiagram
@@ -217,16 +217,17 @@ classDiagram
         +ProjectId id
         +str name
         +str repo_source
-        +str default_branch
+        +str branch
         +AutonomyDial autonomy_dial
         +datetime created_at
-        +create(id, name, repo_source, now)
-        +mark_prepared(default_branch, now)
+        +create(id, name, repo_source, branch, now)
+        +mark_prepared(branch, now)
     }
 
     class WorkItem {
         +WorkItemId id
         +ProjectId project_id
+        +str base_branch
         +RepoRef repo_ref
         +Requirement requirement
         +AutonomyDial autonomy_dial
