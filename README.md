@@ -182,7 +182,7 @@ cd frontend && npm ci && npm run build && cd ..     # 1) 构建前端 → fronte
 pip install -e '.[web]'                              # 2) 装后端 Web 依赖
 export AUTODEV_REPO_MAP='{"my-service":"git@gitlab.example.com:team/my-service.git"}'
 export AUTODEV_HOME="$HOME/.autodev"                 # 工作项库/上下文结果落地(默认 ~/.autodev)
-export ANTHROPIC_BASE_URL="http://10.0.3.248:3000/api"   # 内网网关(需 VPN)
+export ANTHROPIC_BASE_URL="http://<内网网关地址>:<端口>/api"   # 内网网关(需 VPN；实际地址向团队获取)
 python -m autodev.webapp                             # 默认 http://127.0.0.1:8000
 ```
 
