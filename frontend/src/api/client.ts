@@ -68,6 +68,17 @@ export async function deleteProject(id: string): Promise<void> {
   })
 }
 
+export function getProjectBranches(id: string): Promise<string[]> {
+  return request<string[]>(`/api/projects/${encodeURIComponent(id)}/branches`)
+}
+
+export function setProjectBranch(id: string, branch: string): Promise<{ branch: string }> {
+  return request<{ branch: string }>(`/api/projects/${encodeURIComponent(id)}/branch`, {
+    method: 'POST',
+    body: JSON.stringify({ branch }),
+  })
+}
+
 export function createWorkItem(projectId: string, goal: string): Promise<{ id: string }> {
   return request<{ id: string }>(`/api/projects/${encodeURIComponent(projectId)}/workitems`, {
     method: 'POST',
