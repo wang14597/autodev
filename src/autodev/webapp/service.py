@@ -141,7 +141,7 @@ class ProjectConsoleService:
         self._id_gen_project = id_gen_project
         self._id_gen_work = id_gen_work
 
-    def create_project(self, name: str, repo_input: str) -> str:
+    def create_project(self, name: str, repo_input: str, branch: str = "") -> str:
         if not name or not name.strip():
             raise ValueError("name must not be empty")
         if not repo_input or not repo_input.strip():
@@ -154,13 +154,14 @@ class ProjectConsoleService:
 
         repo_source = self._registry.register(name, repo_input)
         try:
-            default_branch = self._workspace.prepare(RepoRef(name))
+            # 留空(branch or None → None)时交给 F1 解析仓库默认分支。
+            default_branch = self._workspace.prepare(RepoRef(name), branch or None)
         except StageError as e:
             # 仓库不可达/路径错误/未连 VPN 等: 回滚登记(别占住项目名), 以可翻译错误(→400)反馈。
             self._registry.unregister(name)
             raise ValueError(f"项目仓库准备失败: {e.message}") from e
         now = self._clock()
-        project = Project.create(self._id_gen_project(), name, repo_source, "", now)
+        project = Project.create(self._id_gen_project(), name, repo_source, default_branch, now)
         project.mark_prepared(default_branch, now)
         self._project_repo.save(project)
         return project.id.value
@@ -190,10 +191,11 @@ class ProjectConsoleService:
             project = self._project_repo.get(ProjectId(project_id))
         except KeyError as e:
             raise LookupError(project_id) from e
-        default_branch = self._workspace.prepare(RepoRef(project.name))
-        project.mark_prepared(default_branch, self._clock())
+        # 重新 fetch, 但保持跟踪当前 project.branch(不回退到仓库默认分支)。
+        branch = self._workspace.prepare(RepoRef(project.name), project.branch or None)
+        project.mark_prepared(branch, self._clock())
         self._project_repo.save(project)
-        return default_branch
+        return branch
 
     def delete_project(self, project_id: str) -> bool:
         try:
@@ -236,6 +238,7 @@ class ProjectConsoleService:
             AutonomyDial.all_human(),
             self._clock(),
             project_id=project.id,
+            base_branch=project.branch,
         )
         self._work_repo.save(work_item)
         self._executor.submit(lambda: _bounded_drive(self._work_repo, self._engine, work_item_id))

@@ -145,7 +145,7 @@ def test_view_project_fields():
         "id": "p1",
         "name": "demo",
         "repo_source": "worktree:/tmp/demo",
-        "default_branch": "main",
+        "branch": "main",
         "workitem_count": 3,
         "created_at": NOW.isoformat(),
     }
@@ -157,7 +157,7 @@ def test_view_project_created_at_none_when_missing():
     view = view_project(project, workitem_count=0)
 
     assert view["created_at"] is None
-    assert view["default_branch"] == ""
+    assert view["branch"] == ""
 
 
 def test_view_project_detail_includes_workitem_summaries():

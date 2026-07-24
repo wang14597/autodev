@@ -83,6 +83,28 @@ def test_create_project_prepares_workspace_and_persists(tmp_path: Path):
     assert registry.repo_map["demo"] == "git@host:team/demo.git"
 
 
+def test_create_project_passes_explicit_branch_to_prepare(tmp_path: Path):
+    svc, project_repo, _work_repo, workspace, _registry = _service(tmp_path)
+
+    svc.create_project("demo", "git@host:team/demo.git", "feature/x")
+
+    assert workspace.prepared == [("demo", "feature/x")]
+    project = project_repo.get_by_name("demo")
+    assert project is not None
+    assert project.branch == "feature/x"
+
+
+def test_create_project_blank_branch_passes_none_to_prepare(tmp_path: Path):
+    svc, project_repo, _work_repo, workspace, _registry = _service(tmp_path)
+
+    svc.create_project("demo", "git@host:team/demo.git", "")
+
+    assert workspace.prepared == [("demo", None)]
+    project = project_repo.get_by_name("demo")
+    assert project is not None
+    assert project.branch == "main"  # FakeWorkspace 默认分支解析结果
+
+
 def test_create_project_rejects_duplicate_name(tmp_path: Path):
     svc, *_ = _service(tmp_path)
     svc.create_project("demo", "git@host:team/demo.git")
@@ -111,7 +133,7 @@ def test_create_project_rolls_back_when_prepare_fails(tmp_path: Path):
     from autodev.domain.errors import StageError
 
     class FailingWorkspace(FakeWorkspace):
-        def prepare(self, repo):  # type: ignore[override]
+        def prepare(self, repo, branch=None):  # type: ignore[override]
             raise StageError(FailureKind.FATAL, "仓库不可达")
 
     svc, project_repo, _wr, _ws, registry = _service(tmp_path, workspace=FailingWorkspace())
@@ -135,6 +157,9 @@ def test_create_workitem_drives_to_design_and_sets_project_id(tmp_path: Path):
     project = project_repo.get_by_name("demo")
     assert wi.project_id == project.id
     assert wi.repo_ref.name == project.name
+    assert wi.base_branch == project.branch
+    saved = _work_repo.get(wi.id)
+    assert saved.base_branch == project.branch
 
 
 def test_create_workitem_rejects_empty_goal(tmp_path: Path):
@@ -196,18 +221,18 @@ def test_get_project_returns_project(tmp_path: Path):
     assert project.name == "demo"
 
 
-def test_refresh_project_updates_default_branch(tmp_path: Path):
+def test_refresh_project_refetches_and_keeps_tracking_branch(tmp_path: Path):
     workspace = FakeWorkspace(default_branch="main")
     svc, project_repo, _work_repo, workspace, _registry = _service(tmp_path, workspace=workspace)
     project_id = svc.create_project("demo", "git@host:team/demo.git")
 
-    workspace.default_branch = "develop"
     branch = svc.refresh_project(project_id)
 
-    assert branch == "develop"
+    # 刷新 = 重新 fetch, 但沿用已解析的跟踪分支(project.branch), 不是重新解析默认分支。
+    assert branch == "main"
     project = project_repo.get_by_name("demo")
-    assert project.branch == "develop"
-    assert workspace.prepared == [("demo", None), ("demo", None)]
+    assert project.branch == "main"
+    assert workspace.prepared == [("demo", None), ("demo", "main")]
 
 
 def test_refresh_unknown_project_raises_lookup_error(tmp_path: Path):
