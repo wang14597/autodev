@@ -23,9 +23,11 @@ from autodev.domain.value_objects import (
 
 
 class FakeWorkspace:
-    def __init__(self, local: bool = True, remote: bool = True):
+    def __init__(self, local: bool = True, remote: bool = True, default_branch: str = "main"):
         self.local, self.remote = local, remote
+        self.default_branch = default_branch
         self.cleaned: list[str] = []
+        self.prepared: list[str] = []
 
     def repo_status(self, repo: RepoRef) -> RepoStatus:
         return RepoStatus(self.local, self.remote)
@@ -37,6 +39,10 @@ class FakeWorkspace:
 
     def cleanup(self, handle: WorkspaceHandle) -> None:
         self.cleaned.append(handle.location)
+
+    def prepare(self, repo: RepoRef) -> str:
+        self.prepared.append(repo.name)
+        return self.default_branch
 
 
 class FakeContext:

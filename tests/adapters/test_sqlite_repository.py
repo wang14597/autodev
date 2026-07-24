@@ -1,5 +1,8 @@
 from datetime import datetime
 
+import pytest
+
+from autodev.adapters.memory_repository import InMemoryWorkItemRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
 from autodev.domain.artifacts import TriageArtifact
 from autodev.domain.enums import TaskType, WorkspaceMode
@@ -136,3 +139,23 @@ def test_project_id_defaults_to_none_when_absent():
     del d["project_id"]  # 模拟旧数据缺失该键
     got = _from_dict(d)
     assert got.project_id is None
+
+
+def _sqlite_repo(tmp_path):
+    return SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+
+
+def _memory_repo(tmp_path):
+    return InMemoryWorkItemRepository()
+
+
+@pytest.mark.parametrize("factory", [_sqlite_repo, _memory_repo])
+def test_delete_removes_work_item(tmp_path, factory):
+    repo = factory(tmp_path)
+    wi = _wi()
+    repo.save(wi)
+
+    repo.delete(wi.id)
+
+    with pytest.raises(KeyError):
+        repo.get(wi.id)

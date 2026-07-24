@@ -79,6 +79,10 @@ class SqliteWorkItemRepository:
             rows = c.execute("SELECT data FROM work_items").fetchall()
         return [_from_dict(json.loads(r[0])) for r in rows]
 
+    def delete(self, work_item_id: WorkItemId) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM work_items WHERE id=?", (work_item_id.value,))
+
 
 # ---------- 序列化（领域 ↔ dict），核心不感知 ----------
 

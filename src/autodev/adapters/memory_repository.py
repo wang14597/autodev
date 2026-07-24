@@ -20,3 +20,6 @@ class InMemoryWorkItemRepository:
 
     def list_all(self) -> list[WorkItem]:
         return list(self._store.values())
+
+    def delete(self, work_item_id: WorkItemId) -> None:
+        self._store.pop(work_item_id.value, None)
