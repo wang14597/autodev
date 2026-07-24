@@ -104,6 +104,25 @@ def test_create_project_rejects_empty_name_or_repo(tmp_path: Path):
         svc.create_project("demo", "   ")
 
 
+def test_create_project_rolls_back_when_prepare_fails(tmp_path: Path):
+    # 仓库不可达/未连 VPN 等: prepare 抛 StageError → 转 ValueError(→400), 且回滚登记,
+    # 项目名不被永久占住, 可同名重试。
+    from autodev.domain.enums import FailureKind
+    from autodev.domain.errors import StageError
+
+    class FailingWorkspace(FakeWorkspace):
+        def prepare(self, repo):  # type: ignore[override]
+            raise StageError(FailureKind.FATAL, "仓库不可达")
+
+    svc, project_repo, _wr, _ws, registry = _service(tmp_path, workspace=FailingWorkspace())
+
+    with pytest.raises(ValueError):
+        svc.create_project("demo", "git@host:team/demo.git")
+
+    assert project_repo.get_by_name("demo") is None
+    assert "demo" not in registry.repo_map  # 回滚, 无残留
+
+
 def test_create_workitem_drives_to_design_and_sets_project_id(tmp_path: Path):
     svc, project_repo, _work_repo, _workspace, _registry = _service(tmp_path)
     project_id = svc.create_project("demo", "git@host:team/demo.git")

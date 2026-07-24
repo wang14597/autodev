@@ -15,6 +15,7 @@ from typing import Protocol, cast
 from autodev.application.engine import Engine
 from autodev.domain.artifacts import ContextArtifact
 from autodev.domain.enums import WorkflowState as S
+from autodev.domain.errors import StageError
 from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.ports import ProjectRepository, WorkItemRepository, WorkspacePort
 from autodev.domain.project import Project
@@ -146,11 +147,18 @@ class ProjectConsoleService:
         if not repo_input or not repo_input.strip():
             raise ValueError("repo_input must not be empty")
         name = name.strip()
-        if name in self._registry.repo_map or self._project_repo.get_by_name(name) is not None:
+        # 仅以已持久化的 Project 判重名: pre-seeded repo_map 条目 / 上次失败的残留
+        # 不应把项目名永久占住(否则改不了、也不显示在项目列表)。
+        if self._project_repo.get_by_name(name) is not None:
             raise ValueError("项目名已存在")
 
         repo_source = self._registry.register(name, repo_input)
-        default_branch = self._workspace.prepare(RepoRef(name))
+        try:
+            default_branch = self._workspace.prepare(RepoRef(name))
+        except StageError as e:
+            # 仓库不可达/路径错误/未连 VPN 等: 回滚登记(别占住项目名), 以可翻译错误(→400)反馈。
+            self._registry.unregister(name)
+            raise ValueError(f"项目仓库准备失败: {e.message}") from e
         now = self._clock()
         project = Project.create(self._id_gen_project(), name, repo_source, now)
         project.mark_prepared(default_branch, now)
