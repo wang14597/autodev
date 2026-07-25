@@ -1,4 +1,4 @@
-import type { ChangeEvent } from 'react'
+import { Select } from 'antd'
 import { ApiError } from '../api/client'
 import type { Project } from '../api/types'
 import { useDeleteProject } from '../hooks/useDeleteProject'
@@ -22,8 +22,7 @@ export function ProjectHeader({ project }: { project: Project }) {
     }
   }
 
-  function handleBranchChange(event: ChangeEvent<HTMLSelectElement>) {
-    const next = event.target.value
+  function handleBranchChange(next: string) {
     if (next && next !== project.branch) {
       setBranch.mutate(next)
     }
@@ -36,9 +35,10 @@ export function ProjectHeader({ project }: { project: Project }) {
     setBranch.error instanceof ApiError ? setBranch.error.detail : setBranch.error?.message
 
   const fetchedBranches = branches.data ?? []
-  const branchOptions = fetchedBranches.includes(project.branch)
+  const branchNames = fetchedBranches.includes(project.branch)
     ? fetchedBranches
     : [project.branch, ...fetchedBranches]
+  const branchOptions = branchNames.map((name) => ({ value: name, label: name }))
   const canPickBranch = !branches.isLoading && branchOptions.length > 0
 
   return (
@@ -53,19 +53,23 @@ export function ProjectHeader({ project }: { project: Project }) {
                 默认分支
               </label>
               {canPickBranch ? (
-                <select
+                <Select
                   id="project-branch-select"
                   className={styles.branchSelect}
+                  style={{ minWidth: 220 }}
+                  popupMatchSelectWidth={false}
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={branchOptions}
                   value={project.branch}
                   onChange={handleBranchChange}
+                  loading={branches.isLoading}
                   disabled={setBranch.isPending}
-                >
-                  {branchOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="选择默认分支"
+                  notFoundContent="未找到匹配的分支"
+                />
               ) : (
                 <span className={styles.branch}>{project.branch}</span>
               )}

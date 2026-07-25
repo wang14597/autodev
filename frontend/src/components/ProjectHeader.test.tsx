@@ -59,9 +59,15 @@ describe('ProjectHeader', () => {
     expect(screen.getByText('/repos/demo')).toBeInTheDocument()
 
     const select = await screen.findByLabelText('默认分支')
-    expect(select).toHaveValue('main')
-    expect(screen.getByRole('option', { name: 'main' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'develop' })).toBeInTheDocument()
+    expect(select).toHaveAttribute('role', 'combobox')
+    // antd Select shows the selected option's label as text (with a `title`
+    // attribute), not as the search input's value.
+    expect(screen.getByTitle('main')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(select)
+    expect(document.querySelector('.ant-select-item-option[title="main"]')).toBeInTheDocument()
+    expect(document.querySelector('.ant-select-item-option[title="develop"]')).toBeInTheDocument()
   })
 
   it('falls back to plain text while the branch list is loading', () => {
@@ -77,10 +83,13 @@ describe('ProjectHeader', () => {
     renderHeader()
 
     const select = await screen.findByLabelText('默认分支')
-    expect(select).toHaveValue('main')
-    expect(screen.getByRole('option', { name: 'main' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'develop' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'staging' })).toBeInTheDocument()
+    expect(screen.getByTitle('main')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(select)
+    expect(document.querySelector('.ant-select-item-option[title="main"]')).toBeInTheDocument()
+    expect(document.querySelector('.ant-select-item-option[title="develop"]')).toBeInTheDocument()
+    expect(document.querySelector('.ant-select-item-option[title="staging"]')).toBeInTheDocument()
   })
 
   it('calls setProjectBranch with the newly chosen branch', async () => {
@@ -88,9 +97,27 @@ describe('ProjectHeader', () => {
     renderHeader()
 
     const select = await screen.findByLabelText('默认分支')
-    await user.selectOptions(select, 'develop')
+    await user.click(select)
+    const option = document.querySelector('.ant-select-item-option[title="develop"]') as HTMLElement
+    await user.click(option)
 
     expect(client.setProjectBranch).toHaveBeenCalledWith('p-1', 'develop')
+  })
+
+  it('filters the branch options fuzzily (case-insensitive substring) as the user types', async () => {
+    vi.mocked(client.getProjectBranches).mockResolvedValue(['develop', 'main', 'feature/DEV-123'])
+    const user = userEvent.setup()
+    renderHeader()
+
+    const select = await screen.findByLabelText('默认分支')
+    await user.click(select)
+    await user.type(select, 'dev')
+
+    expect(document.querySelector('.ant-select-item-option[title="main"]')).not.toBeInTheDocument()
+    expect(document.querySelector('.ant-select-item-option[title="develop"]')).toBeInTheDocument()
+    expect(
+      document.querySelector('.ant-select-item-option[title="feature/DEV-123"]'),
+    ).toBeInTheDocument()
   })
 
   it('shows an inline error when switching the branch fails', async () => {
@@ -99,7 +126,9 @@ describe('ProjectHeader', () => {
     renderHeader()
 
     const select = await screen.findByLabelText('默认分支')
-    await user.selectOptions(select, 'develop')
+    await user.click(select)
+    const option = document.querySelector('.ant-select-item-option[title="develop"]') as HTMLElement
+    await user.click(option)
 
     expect(await screen.findByText(/切换分支失败/)).toBeInTheDocument()
   })
