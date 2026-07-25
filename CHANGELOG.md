@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **默认分支选择器改用 antd**：引入 Ant Design（antd v6）+ `ConfigProvider` 主题（对齐设计令牌），项目默认分支从原生 `<select>` 换成 antd `Select`（`showSearch` 模糊搜索、更美观）。
 - **切换项目默认分支**：项目详情页可从下拉(列出仓库 `origin/*` 分支)切换默认分支;切换会 fetch 校验分支存在并更新项目。新增 `WorkspacePort.list_branches`、`GET /api/projects/{id}/branches`、`POST /api/projects/{id}/branch`。之后新建工作项即基于新默认分支。
 - **建工作项自动 fetch**：创建工作项时先对项目默认分支做一次 `git fetch`（best-effort，失败不阻断），保证该工作项的 worktree 基于默认分支的最新 `origin/<branch>`。（此前 fetch 只在建项目/刷新时做，工作项复用上次结果；现按需保证每个工作项都最新。）UI 术语统一为「默认分支」。
 - **Project 跟踪分支 + 刷新 fetch**：Project 关联"仓库 + 跟踪分支"（创建时可显式指定分支，留空=仓库默认分支）。「刷新」现在**真正执行 `git fetch`** 把远端同步到本地（远程仓 fetch 镜像；本地仓 fetch 其 `origin`，best-effort）。新建工作项时其 worktree 以**跟踪分支的最新** `origin/<branch>` 为基点（本地无 origin 时退回本地分支）。`WorkItem` 增 `base_branch`；`Project.default_branch` 改为 `branch`；`WorkspacePort.prepare(repo, branch)` / `provision(..., base_branch)` 相应扩展。API：`POST /api/projects` 增可选 `branch`，项目 DTO 字段 `default_branch`→`branch`（含 refresh 响应）。
