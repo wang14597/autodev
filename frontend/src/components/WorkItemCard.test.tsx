@@ -10,6 +10,7 @@ const item: WorkItemSummary = {
   repo: 'demo-gateway',
   type: null,
   state: 'TRIAGE',
+  autonomy_enabled: false,
   created_at: '2026-07-22T09:00:00',
   updated_at: '2026-07-22T09:05:00',
 }

@@ -196,7 +196,7 @@ describe('api/client', () => {
     const [url, init] = mock.mock.calls[0]
     expect(url).toBe('/api/projects/p-1/workitems')
     expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toEqual({ goal: '加限流' })
+    expect(JSON.parse(init?.body as string)).toEqual({ goal: '加限流', autonomy_enabled: false })
     const headers = (init?.headers ?? {}) as Record<string, string>
     expect(headers['Content-Type']).toBe('application/json')
   })

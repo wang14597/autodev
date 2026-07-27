@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { approveWorkItem } from '../api/client'
+import { decideWorkItem, type DecideAction } from '../api/client'
 
-export function useApproveWorkItem(id: string | undefined) {
+export function useDecideWorkItem(id: string | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (approved: boolean) => approveWorkItem(id as string, approved),
+    mutationFn: (action: DecideAction) => decideWorkItem(id as string, action),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workitem', id] })
     },

@@ -60,3 +60,17 @@
   padding: 1px 6px;
   border-radius: 4px;
 }
+
+.intent {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--muted);
+  color: var(--ink-soft);
+}
+
+.intent[data-intent='CONSULTATION'] {
+  border-color: var(--signal);
+  color: var(--signal);
+}

@@ -79,10 +79,14 @@ export function setProjectBranch(id: string, branch: string): Promise<{ branch: 
   })
 }
 
-export function createWorkItem(projectId: string, goal: string): Promise<{ id: string }> {
+export function createWorkItem(
+  projectId: string,
+  goal: string,
+  autonomyEnabled = false,
+): Promise<{ id: string }> {
   return request<{ id: string }>(`/api/projects/${encodeURIComponent(projectId)}/workitems`, {
     method: 'POST',
-    body: JSON.stringify({ goal }),
+    body: JSON.stringify({ goal, autonomy_enabled: autonomyEnabled }),
   })
 }
 
@@ -94,5 +98,14 @@ export function approveWorkItem(id: string, approved: boolean): Promise<WorkItem
   return request<WorkItemDetail>(`/api/workitems/${encodeURIComponent(id)}/approve`, {
     method: 'POST',
     body: JSON.stringify({ approved }),
+  })
+}
+
+export type DecideAction = 'proceed' | 'close' | 'reject'
+
+export function decideWorkItem(id: string, action: DecideAction): Promise<WorkItemDetail> {
+  return request<WorkItemDetail>(`/api/workitems/${encodeURIComponent(id)}/decide`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
   })
 }

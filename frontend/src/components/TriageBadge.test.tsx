@@ -7,6 +7,7 @@ const HIGH = {
   confidence: 0.7,
   risk: 'HIGH' as const,
   signals: ['keyword:delete', 'keyword:credential'],
+  intent: 'ACTIONABLE' as const,
 }
 
 describe('TriageBadge', () => {
@@ -26,9 +27,27 @@ describe('TriageBadge', () => {
   })
 
   it('renders a low-risk badge without signals gracefully', () => {
-    const low = { level: 'SMALL_CHANGE', confidence: 0.9, risk: 'LOW' as const, signals: [] }
+    const low = {
+      level: 'SMALL_CHANGE',
+      confidence: 0.9,
+      risk: 'LOW' as const,
+      signals: [],
+      intent: 'ACTIONABLE' as const,
+    }
     const { container } = render(<TriageBadge triage={low} />)
     expect(container.querySelector('[data-risk="LOW"]')).toBeInTheDocument()
     expect(screen.getByTestId('triage-risk')).toHaveTextContent('LOW')
+  })
+
+  it('shows the intent label', () => {
+    const consult = {
+      level: 'SMALL_CHANGE',
+      confidence: 0.9,
+      risk: 'LOW' as const,
+      signals: [],
+      intent: 'CONSULTATION' as const,
+    }
+    render(<TriageBadge triage={consult} />)
+    expect(screen.getByTestId('triage-intent')).toHaveTextContent('查询咨询')
   })
 })

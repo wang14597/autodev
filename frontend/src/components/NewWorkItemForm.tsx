@@ -7,6 +7,7 @@ import styles from './NewWorkItemForm.module.css'
 export function NewWorkItemForm({ projectId }: { projectId: string }) {
   const mutation = useCreateWorkItem(projectId)
   const [goal, setGoal] = useState('')
+  const [autonomyEnabled, setAutonomyEnabled] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -16,7 +17,7 @@ export function NewWorkItemForm({ projectId }: { projectId: string }) {
       return
     }
     setValidationError(null)
-    mutation.mutate(goal.trim())
+    mutation.mutate({ goal: goal.trim(), autonomyEnabled })
   }
 
   const serverError =
@@ -37,6 +38,17 @@ export function NewWorkItemForm({ projectId }: { projectId: string }) {
           disabled={mutation.isPending}
         />
       </div>
+
+      <label className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          id="autonomy-enabled"
+          checked={autonomyEnabled}
+          onChange={(e) => setAutonomyEnabled(e.target.checked)}
+          disabled={mutation.isPending}
+        />
+        <span>让 AI 自主判断是否继续后续流程（不勾选则收集上下文后交你决定）</span>
+      </label>
 
       {validationError && <p className={styles.error}>{validationError}</p>}
       {!validationError && serverError && <p className={styles.error}>{serverError}</p>}
