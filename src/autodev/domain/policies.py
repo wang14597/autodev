@@ -9,6 +9,7 @@ from autodev.domain.enums import (
     GatePoint,
     RiskLevel,
     TaskType,
+    TriageIntent,
     WorkflowState,
     WorkspaceMode,
 )
@@ -137,6 +138,35 @@ class GatePolicy:
             reasons.append(f"confidence<{self.CONFIDENCE_GATE_THRESHOLD}")
         reason = " | ".join(reasons) if needs else "auto (dial + low risk)"
         return GateDecision(needs, reason)
+
+
+class AutonomyPolicy:
+    """上下文收集后的「是否继续」决策（安全兜底优先于开关与意图）。
+
+    返回 "suspend"（挂起 CONTEXT_GATE 交人）/ "finish"（仅收集完成→DONE）/ "proceed"（继续 DESIGN）。
+    规则严格按序早返回：分诊失败/低置信永不被 autonomy_enabled 跳过。置信下限复用
+    GatePolicy.CONFIDENCE_GATE_THRESHOLD 单一真源。
+    """
+
+    def decide_after_context(self, work_item: WorkItem) -> str:
+        triage_obj = work_item.artifacts.get("triage")
+        # 规则 1（安全兜底）：无分诊 / 不可用 / 低置信 → 人审（无论开关）。
+        if triage_obj is None:
+            return "suspend"
+        triage = cast(TriageArtifact, triage_obj)
+        if (
+            "triage-unavailable" in triage.signals
+            or triage.confidence < GatePolicy.CONFIDENCE_GATE_THRESHOLD
+        ):
+            return "suspend"
+        # 规则 2：开关关 → 用户决定。
+        if not work_item.autonomy_enabled:
+            return "suspend"
+        # 规则 3：咨询类 → 仅收集完成。
+        if triage.intent is TriageIntent.CONSULTATION:
+            return "finish"
+        # 规则 4：其余 → 继续。
+        return "proceed"
 
 
 _NEXT = {
