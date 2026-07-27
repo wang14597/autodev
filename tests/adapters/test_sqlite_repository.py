@@ -238,3 +238,48 @@ def test_legacy_triage_dict_without_risk_defaults_low():
     art = _artifact_from_dict(legacy)
     assert art.risk is RiskLevel.LOW
     assert art.signals == ()
+
+
+# --- LLM 分诊子迭代 A：autonomy_enabled + intent 序列化 ---
+
+
+def test_autonomy_enabled_roundtrips(tmp_path):
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("r"),
+        Requirement("g", "r", (), "g"),
+        AutonomyDial.all_human(),
+        NOW,
+        autonomy_enabled=True,
+    )
+    repo.save(wi)
+    assert repo.get(wi.id).autonomy_enabled is True
+
+
+def test_triage_intent_roundtrips(tmp_path):
+    from autodev.domain.enums import RiskLevel, TriageIntent
+
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    wi = WorkItem.create(
+        WorkItemId.new(), RepoRef("r"), Requirement("g", "r", (), "g"), AutonomyDial.all_human(), NOW
+    )
+    wi.add_artifact(
+        "triage",
+        TriageArtifact(
+            TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE, RiskLevel.LOW, (), TriageIntent.CONSULTATION
+        ),
+    )
+    wi.transition_to(S.TRIAGE, "ok", NOW)
+    repo.save(wi)
+    assert repo.get(wi.id).artifacts["triage"].intent is TriageIntent.CONSULTATION
+
+
+def test_legacy_triage_dict_defaults_intent_actionable():
+    from autodev.adapters.sqlite_repository import _artifact_from_dict
+    from autodev.domain.enums import TriageIntent
+
+    art = _artifact_from_dict(
+        {"__t": "TriageArtifact", "level": "SMALL_CHANGE", "confidence": 0.9, "workspace_mode": "REUSE"}
+    )
+    assert art.intent is TriageIntent.ACTIONABLE
