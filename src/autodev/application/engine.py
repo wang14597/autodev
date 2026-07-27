@@ -54,6 +54,8 @@ class Engine:
             self._on_success(work_item, outcome, now)
         elif outcome.kind == "suspend":
             self._on_suspend(work_item, outcome, now)
+        elif outcome.kind == "finish":
+            self._on_finish(work_item, outcome, now)
         else:
             self._on_failure(work_item, outcome, now)
         self.repo.save(work_item)
@@ -71,6 +73,13 @@ class Engine:
             wi.add_artifact(outcome.artifact_key, outcome.artifact)
         wi.suspend(outcome.gate_point, f"awaiting human at {outcome.gate_point.name}", now)
         self.publisher.publish(HumanApprovalRequested(wi.id, outcome.gate_point))
+
+    def _on_finish(self, wi: WorkItem, outcome, now: datetime) -> None:
+        # 仅收集完成：把当前态直接转 DONE 并 finalize（无 design/impl/delivery）。
+        if outcome.artifact_key:
+            wi.add_artifact(outcome.artifact_key, outcome.artifact)
+        wi.transition_to(S.DONE, "collect-only complete", now)
+        self._finalize_done(wi)
 
     def _on_failure(self, wi: WorkItem, outcome, now: datetime) -> None:
         decision = self.retry_policy.decide(wi.state, outcome.failure_kind, wi.retry_ledger)

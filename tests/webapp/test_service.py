@@ -9,13 +9,13 @@ from autodev.adapters.event_bus import InMemoryEventBus
 from autodev.adapters.memory_repository import InMemoryWorkItemRepository
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
-from autodev.domain.enums import FailureKind
+from autodev.domain.enums import FailureKind, GatePoint
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import StageError
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.webapp.service import SyncExecutor, WorkItemConsoleService
 from autodev.webapp.stubs import UnavailableStage
-from tests.fakes import FakeContext, FakeWorkspace
+from tests.fakes import FakeContext, FakeTriage, FakeWorkspace
 
 NOW = datetime(2026, 7, 22, 12, 0, 0)
 
@@ -30,7 +30,7 @@ def _engine(repo, gatherer=None):
         stage,
         stage,
         stage,
-        TriagePolicy(),
+        FakeTriage(),
         GatePolicy(),
     )
     return Engine(repo, InMemoryEventBus(), ctx, clock=lambda: NOW)
@@ -56,7 +56,8 @@ class _AlwaysFailingGatherer:
         raise StageError(FailureKind.TRANSIENT, "boom")
 
 
-def test_create_drives_to_context_and_rests_at_design():
+def test_create_drives_to_context_and_rests_at_context_gate():
+    # 默认关自主 → 收集上下文后停在 CONTEXT_GATE 等用户决定（不再自动进 DESIGN）。
     repo = InMemoryWorkItemRepository()
     engine = _engine(repo)
     _, svc = _service(engine, repo)
@@ -65,13 +66,13 @@ def test_create_drives_to_context_and_rests_at_design():
     wi = svc.get(work_item_id)
 
     assert wi is not None
-    assert wi.state == S.DESIGN
+    assert wi.state == S.WAIT_HUMAN and wi.pending_gate is GatePoint.CONTEXT_GATE
     assert "context" in wi.artifacts
 
 
 def test_driver_never_calls_unimplemented_stages():
     # UnavailableStage 的 designer/reviewer/... 一旦被调用即抛 FATAL -> FAILED。
-    # 断言最终态是 DESIGN（而非 FAILED），证明有界驱动没有越界调用桩端口。
+    # 断言最终态是 WAIT_HUMAN（CONTEXT_GATE，而非 FAILED），证明没有越界调用桩端口。
     repo = InMemoryWorkItemRepository()
     engine = _engine(repo)
     _, svc = _service(engine, repo)
@@ -80,7 +81,7 @@ def test_driver_never_calls_unimplemented_stages():
     wi = svc.get(work_item_id)
 
     assert wi is not None
-    assert wi.state == S.DESIGN
+    assert wi.state == S.WAIT_HUMAN and wi.pending_gate is GatePoint.CONTEXT_GATE
 
 
 def test_stage_error_converges_to_failed():

@@ -25,15 +25,20 @@ def _create_project(client: TestClient, name: str = "demo-proj") -> str:
     return resp.json()["id"]
 
 
-def _create_workitem(client: TestClient, pid: str, goal: str) -> str:
-    resp = client.post(f"/api/projects/{pid}/workitems", json={"goal": goal})
+def _create_workitem(
+    client: TestClient, pid: str, goal: str, autonomy_enabled: bool = False
+) -> str:
+    resp = client.post(
+        f"/api/projects/{pid}/workitems",
+        json={"goal": goal, "autonomy_enabled": autonomy_enabled},
+    )
     assert resp.status_code == 200, resp.text
     return resp.json()["id"]
 
 
 def test_low_risk_workitem_reaches_done_via_api(client: TestClient) -> None:
     pid = _create_project(client)
-    wid = _create_workitem(client, pid, "fix typo in README")
+    wid = _create_workitem(client, pid, "fix typo in README", autonomy_enabled=True)
     detail = client.get(f"/api/workitems/{wid}").json()
     assert detail["state"] == "DONE"
     assert detail["triage"]["risk"] == "LOW"
@@ -42,7 +47,10 @@ def test_low_risk_workitem_reaches_done_via_api(client: TestClient) -> None:
 def test_high_risk_workitem_suspends_with_high_risk_badge(client: TestClient) -> None:
     pid = _create_project(client)
     wid = _create_workitem(
-        client, pid, "migrate auth to new credential store and delete old tokens"
+        client,
+        pid,
+        "migrate auth to new credential store and delete old tokens",
+        autonomy_enabled=True,
     )
     detail = client.get(f"/api/workitems/{wid}").json()
     assert detail["state"] == "WAIT_HUMAN"
@@ -50,9 +58,28 @@ def test_high_risk_workitem_suspends_with_high_risk_badge(client: TestClient) ->
     assert detail["triage"]["signals"]  # 可解释依据非空
 
 
+def test_disabled_workitem_stops_at_context_gate(client: TestClient) -> None:
+    pid = _create_project(client)
+    wid = _create_workitem(client, pid, "fix typo in README")  # 默认关
+    detail = client.get(f"/api/workitems/{wid}").json()
+    assert detail["state"] == "WAIT_HUMAN"
+    assert detail["pending_gate"] == "CONTEXT_GATE"
+
+
+def test_decide_close_collect_only_done(client: TestClient) -> None:
+    pid = _create_project(client)
+    wid = _create_workitem(client, pid, "fix typo in README")  # 默认关 → 停 CONTEXT_GATE
+    client.post(f"/api/workitems/{wid}/decide", json={"action": "close"})
+    detail = client.get(f"/api/workitems/{wid}").json()
+    assert detail["state"] == "DONE"
+    assert detail["collect_only"] is True
+
+
 def test_approve_endpoint_progresses_high_risk_item(client: TestClient) -> None:
     pid = _create_project(client)
-    wid = _create_workitem(client, pid, "delete the legacy credential tokens")
+    wid = _create_workitem(
+        client, pid, "delete the legacy credential tokens", autonomy_enabled=True
+    )
     assert client.get(f"/api/workitems/{wid}").json()["state"] == "WAIT_HUMAN"
 
     # 两个门都挂起（纵深防御）——批准两次到 DONE。

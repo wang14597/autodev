@@ -16,6 +16,7 @@ from autodev.adapters.demo import (
     DemoReview,
     DemoVerification,
     DemoWorkspace,
+    FakeTriage,
     release_all_dial,
 )
 from autodev.adapters.event_bus import InMemoryEventBus
@@ -24,7 +25,7 @@ from autodev.adapters.project_repository import InMemoryProjectRepository
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.webapp.projects import ProjectRegistry
 from autodev.webapp.service import FULL_DRIVE, ProjectConsoleService, SyncExecutor
 
@@ -43,7 +44,7 @@ def _demo_service(tmp_path: Path) -> ProjectConsoleService:
         DemoExecution(),
         DemoVerification(),
         DemoDelivery(),
-        TriagePolicy(),
+        FakeTriage(),
         GatePolicy(),
     )
     engine = Engine(work_repo, InMemoryEventBus(), ctx, clock=lambda: NOW)
@@ -64,18 +65,23 @@ def _demo_service(tmp_path: Path) -> ProjectConsoleService:
 def test_low_risk_workitem_drives_to_done(tmp_path: Path) -> None:
     svc = _demo_service(tmp_path)
     pid = svc.create_project("demo-proj", "demo://repo")
-    wid = svc.create_workitem(pid, "fix typo in README")
+    wid = svc.create_workitem(pid, "fix typo in README", autonomy_enabled=True)
     wi = svc.get_workitem(wid)
     assert wi is not None and wi.state is S.DONE
 
 
 def test_high_risk_workitem_suspends_at_wait_human(tmp_path: Path) -> None:
+    from autodev.domain.enums import GatePoint
+
     svc = _demo_service(tmp_path)
     pid = svc.create_project("demo-proj", "demo://repo")
-    wid = svc.create_workitem(pid, "migrate auth to new credential store and delete old tokens")
+    # 开启自主：低置信/开关不拦，靠"风险 HIGH"在 REVIEW 门挡下（证明是风险而非开关）。
+    wid = svc.create_workitem(
+        pid, "migrate auth to new credential store and delete old tokens", autonomy_enabled=True
+    )
     wi = svc.get_workitem(wid)
     assert wi is not None
-    assert wi.state is S.WAIT_HUMAN
+    assert wi.state is S.WAIT_HUMAN and wi.pending_gate is GatePoint.REVIEW_GATE
     assert wi.artifacts["triage"].risk.name == "HIGH"
 
 
@@ -85,7 +91,7 @@ def test_approve_resumes_high_risk_through_both_gates_to_done(tmp_path: Path) ->
 
     svc = _demo_service(tmp_path)
     pid = svc.create_project("demo-proj", "demo://repo")
-    wid = svc.create_workitem(pid, "delete the legacy credential tokens")
+    wid = svc.create_workitem(pid, "delete the legacy credential tokens", autonomy_enabled=True)
 
     first = svc.get_workitem(wid)
     assert first.state is S.WAIT_HUMAN and first.pending_gate is GatePoint.REVIEW_GATE

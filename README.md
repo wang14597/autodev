@@ -207,7 +207,7 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 - RetryPolicy：失败重试与回退决策
 
 ✅ **出站端口**
-- <!-- fact:ports -->10 个端口协议已定义：WorkItemRepository、ProjectRepository、WorkspacePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
+- <!-- fact:ports -->11 个端口协议已定义：WorkItemRepository、ProjectRepository、WorkspacePort、TriagePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
 - **5 个端口已真实实现**：
   - WorkItemRepository → SQLite 适配器（持久化/查询）
   - ProjectRepository → SQLite 适配器（项目聚合持久化）
@@ -233,7 +233,7 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 ### 端口实现进度
 
 ```
-出站端口（共 <!-- fact:ports -->10 个）：
+出站端口（共 <!-- fact:ports -->11 个）：
 
 ✓ WorkItemRepository        → SQLite 适配器
 ✓ ProjectRepository         → SQLite 适配器（项目聚合）

@@ -31,6 +31,7 @@ def test_end_to_end_with_merge_gate(tmp_path, make_engine):
         ),
         autonomy_dial=_dial(GatePoint.REVIEW_GATE),
         now=FIXED_NOW,
+        autonomy_enabled=True,
     )
 
     run_until_quiescent(repo, eng)
@@ -61,6 +62,7 @@ def test_end_to_end_fully_autonomous(tmp_path, make_engine):
         requirement=Requirement("fix typo", "repo-a", (), "raw"),
         autonomy_dial=_dial(GatePoint.REVIEW_GATE, GatePoint.MERGE_GATE),
         now=FIXED_NOW,
+        autonomy_enabled=True,
     )
     run_until_quiescent(repo, eng)
     assert repo.get(wi.id).state is S.DONE
@@ -79,6 +81,7 @@ def test_end_to_end_verify_failure_fails_cleanly(tmp_path, make_engine):
         requirement=Requirement("fix typo", "repo-a", (), "raw"),
         autonomy_dial=_dial(GatePoint.REVIEW_GATE, GatePoint.MERGE_GATE),
         now=FIXED_NOW,
+        autonomy_enabled=True,
     )
     run_until_quiescent(repo, eng)
     assert repo.get(wi.id).state is S.FAILED  # VERIFY 反复回退 IMPL 至上限后干净失败

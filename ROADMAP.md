@@ -71,7 +71,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 **状态**：✓ 已交付（进行中的 Unreleased 段，尚未打 tag）
 
 **实现范围**：
-- ✓ **`Project` 领域聚合**：`ProjectId`、name、仓库来源、跟踪分支(`branch`)、project 级 `AutonomyDial`；配套 `ProjectRepository` 端口（`SqliteProjectRepository` / `InMemoryProjectRepository` 两实现）。`WorkItem` 增 `project_id` 归属、`base_branch`。出站端口由 9 增至 <!-- fact:ports -->10（新增 ProjectRepository）。
+- ✓ **`Project` 领域聚合**：`ProjectId`、name、仓库来源、跟踪分支(`branch`)、project 级 `AutonomyDial`；配套 `ProjectRepository` 端口（`SqliteProjectRepository` / `InMemoryProjectRepository` 两实现）。`WorkItem` 增 `project_id` 归属、`base_branch`。出站端口由 9 增至 <!-- fact:ports -->11（新增 ProjectRepository）。
 - ✓ **Web 后端**（`src/autodev/webapp/`，FastAPI）：项目与工作项 REST API（`GET/POST /api/projects`、项目详情/刷新/删除、项目下建工作项、列分支、切默认分支）；**有界驱动**只自动跑 INTAKE→TRIAGE→CONTEXT 止于 DESIGN；生产托管 `frontend/dist`（SPA 回退 + 目录穿越防护）。
 - ✓ **前端控制台**（`frontend/`，Vite + React + TypeScript + TanStack Query + React Router）：以「项目」为中心的两步导航（项目列表 → 项目详情 → 工作项详情），创建项目/工作项、生命周期流水线可视化、上下文简报渲染；字体与 Markdown 库本地打包（运行时零公网 CDN）；antd Select 模糊搜索切换默认分支。
 - ✓ **本地仓库直挂 worktree**：项目输入为本地 git 目录时自动登记并 `git worktree add`（共享对象库、秒级、不碰工作目录），登记持久化到 `~/.autodev/repos.json`。

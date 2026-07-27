@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Protocol, cast
 
 from autodev.application.engine import Engine
-from autodev.application.entrypoints import resume_work_item
+from autodev.application.entrypoints import decide_work_item
 from autodev.domain.artifacts import ContextArtifact
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import StageError
@@ -278,7 +278,7 @@ class ProjectConsoleService:
         self._project_repo.delete(pid)
         return True
 
-    def create_workitem(self, project_id: str, goal: str) -> str:
+    def create_workitem(self, project_id: str, goal: str, autonomy_enabled: bool = False) -> str:
         if not goal or not goal.strip():
             raise ValueError("goal must not be empty")
         try:
@@ -303,6 +303,7 @@ class ProjectConsoleService:
             self._clock(),
             project_id=project.id,
             base_branch=project.branch,
+            autonomy_enabled=autonomy_enabled,
         )
         self._work_repo.save(work_item)
         self._executor.submit(
@@ -310,22 +311,26 @@ class ProjectConsoleService:
         )
         return work_item_id.value
 
-    def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:
-        """人审放行/拒绝一个 WAIT_HUMAN 工作项，随后继续驱动至 quiescent。
+    def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
+        """人审决策一个 WAIT_HUMAN 工作项：proceed / close / reject，随后（非终态）继续驱动。
 
-        复用领域入口 `resume_work_item`（正确处理 finalize/事件/deny），approve 后须
-        显式再驱动——resume 本身对 REVIEW_GATE 只 resume_to(IMPL) 不驱动。
+        复用领域入口 `decide_work_item`（正确处理 finalize/事件），proceed 后须显式再驱动
+        （resume 本身不驱动）。close/reject 到终态无需再驱动。
         """
         wid = WorkItemId(work_item_id)
         try:
-            resume_work_item(wid, approved, self._work_repo, self._engine, self._clock())
+            decide_work_item(wid, decision, self._work_repo, self._engine, self._clock())
         except KeyError:
             return None
-        if approved:
+        if decision == "proceed":
             self._executor.submit(
                 lambda: _bounded_drive(self._work_repo, self._engine, wid, self._run_states)
             )
         return self.get_workitem(work_item_id)
+
+    def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:
+        """向后兼容薄壳：True→proceed / False→reject，委托到 decide_workitem。"""
+        return self.decide_workitem(work_item_id, "proceed" if approved else "reject")
 
     def list_workitems(self, project_id: str) -> list[WorkItem]:
         pid = ProjectId(project_id)

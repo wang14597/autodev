@@ -105,7 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Architecture Decisions
 - **DDD with Ubiquitous Language:** All code and docs use 统一语言 terms (WorkItem, DesignProposal, Artifact, Gate, etc.); 禁止 SDK-specific leakage into core domain.
-- **Hexagonal (Ports & Adapters):** Core orchestration domain defines <!-- fact:ports -->10 outbound ports; adapters implement them without polluting core logic.
+- **Hexagonal (Ports & Adapters):** Core orchestration domain defines <!-- fact:ports -->11 outbound ports; adapters implement them without polluting core logic.
 - **Event-Driven Collaboration:** Domain publishes events; the Collaboration/Observability bounded contexts subscribe (decoupled) — no dedicated "CollaborationPort" exists; Collaboration is a bounded context, not a code port.
 - **Append-Only Artifacts:** All stage outputs versioned per key; no overwrites. Enables audit trail and clean rollback semantics.
 - **AutonomyDial:** Gate decisions parameterized per (taskType, repo, gatePoint) → auto | human; enables gradual automation rollout.

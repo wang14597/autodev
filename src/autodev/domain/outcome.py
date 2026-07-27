@@ -25,5 +25,12 @@ class StageOutcome:
         return cls("suspend", artifact_key=artifact_key, artifact=artifact, gate_point=gate_point)
 
     @classmethod
+    def finish(
+        cls, artifact_key: str | None = None, artifact: object | None = None
+    ) -> StageOutcome:
+        """当前阶段即终点（仅收集完成）：引擎将当前态转 DONE 并 finalize。"""
+        return cls("finish", artifact_key=artifact_key, artifact=artifact)
+
+    @classmethod
     def fail(cls, failure_kind: FailureKind, message: str) -> StageOutcome:
         return cls("failure", failure_kind=failure_kind, message=message)

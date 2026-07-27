@@ -5,13 +5,14 @@ import pytest
 
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from tests.fakes import (
     FakeContext,
     FakeDelivery,
     FakeDesign,
     FakeExecution,
     FakeReview,
+    FakeTriage,
     FakeVerification,
     FakeWorkspace,
 )
@@ -30,7 +31,7 @@ def make_engine():
             FakeExecution(),
             FakeVerification(passed=verify_ok),
             FakeDelivery(),
-            TriagePolicy(),
+            FakeTriage(),
             GatePolicy(),
         )
         return Engine(repo, bus, ctx, clock=lambda: FIXED_NOW)

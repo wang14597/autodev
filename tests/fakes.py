@@ -1,6 +1,8 @@
 # tests/fakes.py
 from __future__ import annotations
 
+# FakeTriage 是生产侧确定性适配器（adapters/demo.py），此处 re-export 供测试统一注入。
+from autodev.adapters.demo import FakeTriage as FakeTriage
 from autodev.domain.artifacts import (
     AcceptanceArtifact,
     ContextArtifact,

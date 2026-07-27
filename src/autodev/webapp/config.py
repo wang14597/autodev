@@ -18,13 +18,14 @@ from fastapi import FastAPI
 
 from autodev.adapters.claude_runner import ClaudeCodeRunner
 from autodev.adapters.context_claude import ClaudeContextAdapter
+from autodev.adapters.demo import FakeTriage
 from autodev.adapters.event_bus import InMemoryEventBus
 from autodev.adapters.project_repository import SqliteProjectRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
 from autodev.adapters.workspace_git import GitWorkspaceAdapter, GitWorkspaceConfig
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.webapp.app import create_app
 from autodev.webapp.projects import load_registry
 from autodev.webapp.service import ProjectConsoleService
@@ -80,6 +81,7 @@ def build_env_service() -> ProjectConsoleService:
     gatherer = ClaudeContextAdapter(runner=lambda p, c: runner.run(p, c), autodev_home=home)
     stub = UnavailableStage()
 
+    # 分诊：子迭代 A 先接确定性 FakeTriage 保证可跑；子迭代 B 换为真实 LlmTriageAdapter。
     ctx = StageContext(
         workspace,
         gatherer,
@@ -88,7 +90,7 @@ def build_env_service() -> ProjectConsoleService:
         stub,
         stub,
         stub,
-        TriagePolicy(),
+        FakeTriage(),
         GatePolicy(),
     )
     engine = Engine(repo, publisher, ctx, clock=lambda: datetime.now(UTC))

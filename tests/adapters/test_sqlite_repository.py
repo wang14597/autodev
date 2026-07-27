@@ -262,12 +262,21 @@ def test_triage_intent_roundtrips(tmp_path):
 
     repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
     wi = WorkItem.create(
-        WorkItemId.new(), RepoRef("r"), Requirement("g", "r", (), "g"), AutonomyDial.all_human(), NOW
+        WorkItemId.new(),
+        RepoRef("r"),
+        Requirement("g", "r", (), "g"),
+        AutonomyDial.all_human(),
+        NOW,
     )
     wi.add_artifact(
         "triage",
         TriageArtifact(
-            TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE, RiskLevel.LOW, (), TriageIntent.CONSULTATION
+            TaskType.SMALL_CHANGE,
+            0.9,
+            WorkspaceMode.REUSE,
+            RiskLevel.LOW,
+            (),
+            TriageIntent.CONSULTATION,
         ),
     )
     wi.transition_to(S.TRIAGE, "ok", NOW)
@@ -280,6 +289,11 @@ def test_legacy_triage_dict_defaults_intent_actionable():
     from autodev.domain.enums import TriageIntent
 
     art = _artifact_from_dict(
-        {"__t": "TriageArtifact", "level": "SMALL_CHANGE", "confidence": 0.9, "workspace_mode": "REUSE"}
+        {
+            "__t": "TriageArtifact",
+            "level": "SMALL_CHANGE",
+            "confidence": 0.9,
+            "workspace_mode": "REUSE",
+        }
     )
     assert art.intent is TriageIntent.ACTIONABLE

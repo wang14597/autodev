@@ -21,6 +21,7 @@ from autodev.adapters.demo import (
     DemoReview,
     DemoVerification,
     DemoWorkspace,
+    FakeTriage,
     release_all_dial,
 )
 from autodev.adapters.event_bus import InMemoryEventBus
@@ -28,7 +29,7 @@ from autodev.adapters.memory_repository import InMemoryWorkItemRepository
 from autodev.adapters.project_repository import InMemoryProjectRepository
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.webapp.app import create_app
 from autodev.webapp.projects import ProjectRegistry
 from autodev.webapp.service import FULL_DRIVE, ProjectConsoleService, SyncExecutor
@@ -54,7 +55,7 @@ def build_demo_app() -> FastAPI:
         DemoExecution(),
         DemoVerification(),
         DemoDelivery(),
-        TriagePolicy(),
+        FakeTriage(),
         GatePolicy(),
     )
     engine = Engine(work_repo, InMemoryEventBus(), ctx, clock=lambda: datetime.now(UTC))
