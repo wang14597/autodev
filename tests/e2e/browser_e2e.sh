@@ -60,31 +60,48 @@ agent-browser fill "#project-repo" "demo://repo" >/dev/null
 agent-browser find text "创建项目" click --exact >/dev/null
 agent-browser wait --text "创建工作项" >/dev/null        # 到项目详情页
 
-# 场景 ① 低风险 → DONE
+back_to_project() {  # 从工作项详情返回项目详情页
+  agent-browser find text "← 返回项目" click >/dev/null
+  agent-browser wait --text "创建工作项" >/dev/null
+}
+
+# 场景 ① 默认关自主 → 收集后停 CONTEXT_GATE → 点「完成(仅收集)」→ DONE
+agent-browser fill "#workitem-goal" "fix typo in README" >/dev/null   # 不勾自主
+agent-browser find text "创建工作项" click >/dev/null
+agent-browser wait --text "人审门禁" >/dev/null
+assert_count '[data-testid="approval-panel"]' "1" "场景①：默认关 → 停 CONTEXT_GATE"
+assert_count '[data-testid="close-button"]' "1" "场景①：出现「完成(仅收集)」按钮"
+agent-browser find testid "close-button" click >/dev/null
+agent-browser wait --load networkidle >/dev/null
+agent-browser wait --text "生命周期" >/dev/null
+assert_count '[data-testid="approval-panel"]' "0" "场景①：完成(仅收集)后到 DONE"
+
+# 场景 ② 开自主 + 咨询意图 → 自动仅收集完成(DONE)，意图徽章=查询咨询
+back_to_project
+agent-browser fill "#workitem-goal" "how does the login flow work" >/dev/null
+agent-browser check "#autonomy-enabled" >/dev/null
+agent-browser find text "创建工作项" click >/dev/null
+agent-browser wait --text "分诊" >/dev/null
+assert_has '[data-testid="triage-intent"]' "查询咨询" "场景②：意图=查询咨询"
+assert_count '[data-testid="approval-panel"]' "0" "场景②：咨询类自动仅收集→DONE(无人审)"
+
+# 场景 ③ 开自主 + 低风险落地 → 自动流转到 DONE
+back_to_project
 agent-browser fill "#workitem-goal" "fix typo in README" >/dev/null
+agent-browser check "#autonomy-enabled" >/dev/null
 agent-browser find text "创建工作项" click >/dev/null
-agent-browser wait --text "分诊" >/dev/null              # 到工作项详情页
-assert_has '[data-testid="triage-risk"]' "LOW" "场景①：分诊 risk=LOW"
-assert_count '[data-testid="approval-panel"]' "0" "场景①：无人审门(DONE 自动流转)"
+agent-browser wait --text "分诊" >/dev/null
+assert_has '[data-testid="triage-risk"]' "LOW" "场景③：分诊 risk=LOW"
+assert_count '[data-testid="approval-panel"]' "0" "场景③：低风险落地自动流转→DONE"
 
-# 场景 ② 高风险 → WAIT_HUMAN
-agent-browser find text "← 返回项目" click >/dev/null
-agent-browser wait --text "创建工作项" >/dev/null
-agent-browser fill "#workitem-goal" "migrate auth to new credential store and delete old tokens" >/dev/null
+# 场景 ④ 开自主 + 高风险落地 → 靠"风险 HIGH"在 REVIEW 门挡下人审
+back_to_project
+agent-browser fill "#workitem-goal" "migrate auth and delete old credential tokens" >/dev/null
+agent-browser check "#autonomy-enabled" >/dev/null
 agent-browser find text "创建工作项" click >/dev/null
-agent-browser wait --text "人审门禁" >/dev/null          # 挂起面板出现
-assert_has '[data-testid="triage-risk"]' "HIGH" "场景②：分诊 risk=HIGH"
-assert_count '[data-risk="HIGH"]' "1" "场景②：HIGH 风险徽章"
-assert_count '[data-testid="approval-panel"]' "1" "场景②：挂起人审门(WAIT_HUMAN)"
-
-# 场景 ③ 批准×2 → DONE(高风险在 REVIEW 与 MERGE 两门都挂起)
-agent-browser find testid "approve-button" click >/dev/null
-agent-browser wait --load networkidle >/dev/null
-agent-browser wait --text "人审门禁" >/dev/null          # MERGE 门再次挂起
-assert_count '[data-testid="approval-panel"]' "1" "场景③：首次批准后于 MERGE 门再挂起(纵深防御)"
-agent-browser find testid "approve-button" click >/dev/null
-agent-browser wait --load networkidle >/dev/null
-agent-browser wait --text "生命周期" >/dev/null          # 详情仍在, 但人审面板消失
-assert_count '[data-testid="approval-panel"]' "0" "场景③：二次批准后到 DONE"
+agent-browser wait --text "人审门禁" >/dev/null
+assert_has '[data-testid="triage-risk"]' "HIGH" "场景④：分诊 risk=HIGH"
+assert_count '[data-testid="approval-panel"]' "1" "场景④：高风险落地挂起人审(REVIEW 门)"
+assert_count '[data-testid="close-button"]' "0" "场景④：REVIEW 门无「仅收集」键(仅 CONTEXT 门有)"
 
 echo "[5/5] ✓ 全部 E2E 场景通过"
