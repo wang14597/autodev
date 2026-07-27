@@ -94,10 +94,13 @@ def test_production_execution_and_verification_remain_stubs(
 ) -> None:
     """安全回归守卫：沙箱就绪（迭代 2.4）前，生产绝不接真实 Execution/Verification。"""
     monkeypatch.setenv("AUTODEV_HOME", str(tmp_path))
+    from autodev.adapters.triage_llm import LlmTriageAdapter
     from autodev.webapp.config import build_env_service
     from autodev.webapp.stubs import UnavailableStage
 
     ctx = build_env_service()._engine.ctx
+    # 分诊已是真实 LLM 适配器;但 Execution/Verification/Design 在沙箱就绪前仍须为桩。
+    assert isinstance(ctx.triage, LlmTriageAdapter)
     assert isinstance(ctx.executor, UnavailableStage)
     assert isinstance(ctx.verifier, UnavailableStage)
     assert isinstance(ctx.designer, UnavailableStage)

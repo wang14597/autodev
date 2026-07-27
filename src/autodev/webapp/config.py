@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -18,10 +19,10 @@ from fastapi import FastAPI
 
 from autodev.adapters.claude_runner import ClaudeCodeRunner
 from autodev.adapters.context_claude import ClaudeContextAdapter
-from autodev.adapters.demo import FakeTriage
 from autodev.adapters.event_bus import InMemoryEventBus
 from autodev.adapters.project_repository import SqliteProjectRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
+from autodev.adapters.triage_llm import LlmTriageAdapter, _auth_headers_from_env
 from autodev.adapters.workspace_git import GitWorkspaceAdapter, GitWorkspaceConfig
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
@@ -81,7 +82,15 @@ def build_env_service() -> ProjectConsoleService:
     gatherer = ClaudeContextAdapter(runner=lambda p, c: runner.run(p, c), autodev_home=home)
     stub = UnavailableStage()
 
-    # 分诊：子迭代 A 先接确定性 FakeTriage 保证可跑；子迭代 B 换为真实 LlmTriageAdapter。
+    # 分诊：真实 LLM 分诊(直连 Messages API,Opus 4.8)。缺 key/token 时不 fail-fast——
+    # 启动打警告,每次分诊调用将 StageError→降级为挂起人审(平台退化为人工分诊闸,不阻断)。
+    if not _auth_headers_from_env():
+        warnings.warn(
+            "未检测到 LLM 分诊凭据(ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN 等); "
+            "分诊将不可用并回退为挂起人审。",
+            stacklevel=2,
+        )
+    triage = LlmTriageAdapter.from_env()
     ctx = StageContext(
         workspace,
         gatherer,
@@ -90,7 +99,7 @@ def build_env_service() -> ProjectConsoleService:
         stub,
         stub,
         stub,
-        FakeTriage(),
+        triage,
         GatePolicy(),
     )
     engine = Engine(repo, publisher, ctx, clock=lambda: datetime.now(UTC))
