@@ -44,6 +44,10 @@ def _build_allowed() -> dict[WorkflowState, frozenset[WorkflowState]]:
     allowed[S.REVIEW].add(S.WAIT_HUMAN)
     allowed[S.SUBMIT_MR].add(S.WAIT_HUMAN)
     allowed[S.WAIT_HUMAN].update({S.IMPL, S.DONE})
+    # 上下文后决策（CONTEXT_GATE / 仅收集）：挂起人审、直接完成、或人工/自动选择继续
+    allowed[S.CONTEXT].add(S.WAIT_HUMAN)
+    allowed[S.CONTEXT].add(S.DONE)
+    allowed[S.WAIT_HUMAN].add(S.DESIGN)
     # 任意非终态可失败
     for s in S:
         if s not in _TERMINAL:
@@ -60,6 +64,7 @@ class WorkItem:
     type: TaskType | None = None
     project_id: ProjectId | None = None
     base_branch: str | None = None
+    autonomy_enabled: bool = False
     state: WorkflowState = S.INTAKE
     artifact_versions: dict[str, list] = field(default_factory=dict)
     history: list[StateTransition] = field(default_factory=list)
@@ -81,6 +86,7 @@ class WorkItem:
         now: datetime,
         project_id: ProjectId | None = None,
         base_branch: str | None = None,
+        autonomy_enabled: bool = False,
     ) -> WorkItem:
         return cls(
             id=id,
@@ -89,6 +95,7 @@ class WorkItem:
             autonomy_dial=autonomy_dial,
             project_id=project_id,
             base_branch=base_branch,
+            autonomy_enabled=autonomy_enabled,
             created_at=now,
             updated_at=now,
         )
