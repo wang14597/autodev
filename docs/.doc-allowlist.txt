@@ -22,3 +22,8 @@ Transition
 
 # Python 内置异常(非仓库自定义符号)
 KeyError
+
+# 前端组件/第三方库(antd / React 等)名, 非 src/autodev 后端符号
+ConfigProvider
+Select
+TriageBadge

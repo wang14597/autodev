@@ -89,3 +89,10 @@ export function createWorkItem(projectId: string, goal: string): Promise<{ id: s
 export function getWorkItem(id: string): Promise<WorkItemDetail> {
   return request<WorkItemDetail>(`/api/workitems/${encodeURIComponent(id)}`)
 }
+
+export function approveWorkItem(id: string, approved: boolean): Promise<WorkItemDetail> {
+  return request<WorkItemDetail>(`/api/workitems/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ approved }),
+  })
+}

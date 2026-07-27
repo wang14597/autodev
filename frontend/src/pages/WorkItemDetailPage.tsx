@@ -6,12 +6,15 @@ import { FailurePanel } from '../components/FailurePanel'
 import { LifelinePipeline } from '../components/LifelinePipeline'
 import { Notice } from '../components/Notice'
 import { StatusBadge } from '../components/StatusBadge'
+import { TriageBadge } from '../components/TriageBadge'
+import { useApproveWorkItem } from '../hooks/useApproveWorkItem'
 import { useWorkItem } from '../hooks/useWorkItem'
 import styles from './WorkItemDetailPage.module.css'
 
 export function WorkItemDetailPage() {
   const { pid, id } = useParams<{ pid: string; id: string }>()
   const { data: detail, isError, error, isLoading } = useWorkItem(id)
+  const approve = useApproveWorkItem(id)
 
   if (isError) {
     if (error instanceof ApiError && error.status === 404) {
@@ -44,6 +47,39 @@ export function WorkItemDetailPage() {
           <StatusBadge state={detail.state} />
         </div>
       </section>
+
+      {detail.triage && (
+        <section className={styles.section}>
+          <p className={styles.sectionTitle}>分诊</p>
+          <TriageBadge triage={detail.triage} />
+        </section>
+      )}
+
+      {detail.state === 'WAIT_HUMAN' && (
+        <section className={styles.section} data-testid="approval-panel">
+          <p className={styles.sectionTitle}>人审门禁</p>
+          <p className={styles.gateHint}>该工作项风险偏高或置信不足，已挂起等待人工确认。</p>
+          <div className={styles.gateActions}>
+            <button
+              type="button"
+              className={styles.approveBtn}
+              data-testid="approve-button"
+              disabled={approve.isPending}
+              onClick={() => approve.mutate(true)}
+            >
+              批准继续
+            </button>
+            <button
+              type="button"
+              className={styles.denyBtn}
+              disabled={approve.isPending}
+              onClick={() => approve.mutate(false)}
+            >
+              拒绝
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className={styles.section}>
         <p className={styles.sectionTitle}>生命周期</p>

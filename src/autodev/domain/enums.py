@@ -7,6 +7,12 @@ class TaskType(Enum):
     COMPLEX_FEATURE = auto()
 
 
+class RiskLevel(Enum):
+    LOW = auto()
+    MEDIUM = auto()
+    HIGH = auto()
+
+
 class WorkflowState(Enum):
     INTAKE = auto()
     TRIAGE = auto()

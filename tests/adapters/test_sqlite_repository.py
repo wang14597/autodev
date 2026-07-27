@@ -194,3 +194,47 @@ def test_delete_removes_work_item(tmp_path, factory):
 
     with pytest.raises(KeyError):
         repo.get(wi.id)
+
+
+# --- 切片 2.1：TriageArtifact 风险维度序列化 ---
+
+
+def test_triage_risk_and_signals_roundtrip(tmp_path):
+    from autodev.domain.enums import RiskLevel
+
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite"))
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("repo-a"),
+        Requirement("delete old tokens", "repo-a", (), "delete old tokens"),
+        AutonomyDial.all_human(),
+        NOW,
+    )
+    wi.type = TaskType.SMALL_CHANGE
+    wi.add_artifact(
+        "triage",
+        TriageArtifact(
+            TaskType.SMALL_CHANGE, 0.7, WorkspaceMode.REUSE, RiskLevel.HIGH, ("keyword:delete",)
+        ),
+    )
+    wi.transition_to(S.TRIAGE, "ok", NOW)
+    repo.save(wi)
+
+    got = repo.get(wi.id).artifacts["triage"]
+    assert got.risk is RiskLevel.HIGH
+    assert got.signals == ("keyword:delete",)
+
+
+def test_legacy_triage_dict_without_risk_defaults_low():
+    from autodev.adapters.sqlite_repository import _artifact_from_dict
+    from autodev.domain.enums import RiskLevel
+
+    legacy = {
+        "__t": "TriageArtifact",
+        "level": "SMALL_CHANGE",
+        "confidence": 0.9,
+        "workspace_mode": "REUSE",
+    }
+    art = _artifact_from_dict(legacy)
+    assert art.risk is RiskLevel.LOW
+    assert art.signals == ()

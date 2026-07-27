@@ -1,6 +1,7 @@
 # AutoDev 产品路线图
 
-> **日期**：2026-07-15  
+> **创建**：2026-07-15  
+> **最近校准**：2026-07-25（与代码对齐）  
 > **状态**：活跃  
 > **维护者**：AutoDev Team
 
@@ -10,14 +11,21 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 
 ```
 ▌┐
-▌│ 切片 4：信任梯度自动合并（⇒ 无人值守）
-▌├ 切片 3：中/复杂特性重流程 + 强上下文
-▌├ 切片 2：真实 ACL + E2E 冒烟
-▌└ 切片 1：行走骨架（✓ 已完成）
+▌│ 切片 4：信任梯度自动合并（⇒ 无人值守）        ▢ 未开始
+▌├ 切片 3：中/复杂特性重流程 + 强上下文          ▢ 未开始
+▌├ 切片 2：真实 ACL + E2E 冒烟                  ◐ 进行中（Workspace/Context 已落地）
+▌└ 切片 1：行走骨架                             ✓ 已完成
 │
-└─→ 项目基线：门面文档、架构图、ADR、质量门禁（✓ 已完成）
+├─→ 控制台 + Project 一等概念（Web 平台外观）    ✓ 已交付
+│   （0.1.2 / Unreleased）
+└─→ 项目基线：门面文档、架构图、ADR、质量门禁    ✓ 已完成
     （0.1.1）
 ```
+
+> **文档-代码对齐说明（2026-07-25）**：本 ROADMAP 曾定格在 0.1.1 项目基线。此后代码实质推进了两块：
+> ①「控制台 + Project 一等概念」里程碑已交付（见下节）；②切片 2 已启动，7 个假适配器中
+> `WorkspacePort`、`ContextPort` 两个真实 ACL 适配器已实现。以 [CHANGELOG](CHANGELOG.md) 的
+> `[Unreleased]` 段与本文为当前权威基准。
 
 ---
 
@@ -52,6 +60,29 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 - `docs/adr/` 含 5 个文件
 - `CONTRIBUTING.md` / `SECURITY.md` / `LICENSE` / `CHANGELOG.md` / `.github/pull_request_template.md` / `.github/CODEOWNERS` / `.pre-commit-config.yaml` / `.github/workflows/ci.yml`
 - `pyproject.toml` 更新（ruff/mypy 配置）
+
+---
+
+## 控制台 + Project 一等概念（0.1.2 / Unreleased）— ✓ 已交付
+
+**目标**：给平台一张面向用户的操作面(driving adapter)，并引入「项目」作为组织多个工作项的一等聚合，使平台从「库 + 测试」进化为「可点开就用的 Web 控制台」。此里程碑在 ROADMAP 原计划之外补入，为切片 2 的真实闭环提供操作入口。
+
+**时间线**：2026-07-16 - 2026-07-25  
+**状态**：✓ 已交付（进行中的 Unreleased 段，尚未打 tag）
+
+**实现范围**：
+- ✓ **`Project` 领域聚合**：`ProjectId`、name、仓库来源、跟踪分支(`branch`)、project 级 `AutonomyDial`；配套 `ProjectRepository` 端口（`SqliteProjectRepository` / `InMemoryProjectRepository` 两实现）。`WorkItem` 增 `project_id` 归属、`base_branch`。出站端口由 9 增至 <!-- fact:ports -->10（新增 ProjectRepository）。
+- ✓ **Web 后端**（`src/autodev/webapp/`，FastAPI）：项目与工作项 REST API（`GET/POST /api/projects`、项目详情/刷新/删除、项目下建工作项、列分支、切默认分支）；**有界驱动**只自动跑 INTAKE→TRIAGE→CONTEXT 止于 DESIGN；生产托管 `frontend/dist`（SPA 回退 + 目录穿越防护）。
+- ✓ **前端控制台**（`frontend/`，Vite + React + TypeScript + TanStack Query + React Router）：以「项目」为中心的两步导航（项目列表 → 项目详情 → 工作项详情），创建项目/工作项、生命周期流水线可视化、上下文简报渲染；字体与 Markdown 库本地打包（运行时零公网 CDN）；antd Select 模糊搜索切换默认分支。
+- ✓ **本地仓库直挂 worktree**：项目输入为本地 git 目录时自动登记并 `git worktree add`（共享对象库、秒级、不碰工作目录），登记持久化到 `~/.autodev/repos.json`。
+- ✓ **前端质量门禁**：typecheck / oxlint / vitest / build / prettier，接入 GitHub Actions frontend job。
+
+**验收标准**：
+- ✓ 后端应用服务 / 视图投影 / 路由均以注入假件单测
+- ✓ 前端组件与 hooks 有 vitest 覆盖
+- ✓ 未构建前端时回退占位页、API 仍可用
+
+**尚缺（转入切片 2/后续）**：真实浏览器端到端(E2E)冒烟、DESIGN 及之后阶段的真实驱动（当前止于 CONTEXT，DESIGN 起为抛错桩）、Delivery 的 push/开 MR。
 
 ---
 
@@ -99,28 +130,32 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 
 ## 切片 2：真实 ACL + E2E 冒烟
 
+**◐ 进行中**（Workspace / Context 两个真实适配器已落地，其余 5 个待实现）
+
 **目标**：将 7 个假适配器替换为真实实现，跑通完整的端到端冒烟测试。
 
-**依赖**：切片 1（✓ 已完成）
+**依赖**：切片 1（✓ 已完成）、控制台里程碑（✓ 已交付，提供操作入口）
 
-**实现范围**：
+**适配器进度**：
 
-| 适配器 | 职责 | 当前状态 | 计划状态 |
+| 适配器 | 职责 | 当前状态 | 落点 / 计划 |
 |--------|------|---------|---------|
-| **WorkspacePort** | git mirror 缓存 + worktree/分支准备与清理 | 假 | 真实（GitLab API + 本地 git） |
-| **ContextPort** | 为 WorkItem 收集代码/文档上下文 | 假 | 真实（Claude Code runner） |
-| **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | 假 | 真实（Claude Code runner） |
-| **ReviewPort** | 对 DesignProposal 做代码评审 | 假 | 真实（Claude Code runner） |
-| **ExecutionPort** | 按 DesignProposal 编码实现 | 假 | 真实（Claude Code runner） |
-| **VerificationPort** | 跑测试/lint/构建得出 Verdict | 假 | 真实（测试框架 + lint + 构建工具集成） |
-| **DeliveryPort** | 创建分支、push、开 MR、（后续）编排合并 | 假 | 真实（GitLab API） |
+| **WorkspacePort** | git mirror 缓存 + worktree/分支准备与清理 | ✅ 真实已实现（`GitWorkspaceAdapter`）**且已接入组合根**（`config.py`），有界驱动的 TRIAGE/CONTEXT 已真实使用 | 本地 git + bare mirror；后续补 push + GitLab 远程 |
+| **ContextPort** | 为 WorkItem 收集代码/文档上下文 | ✅ 真实已实现（`ClaudeContextAdapter` + `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出 Markdown 上下文文档，持久化到 `~/.autodev` |
+| **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
+| **ReviewPort** | 对 DesignProposal 做代码评审 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
+| **ExecutionPort** | 按 DesignProposal 编码实现 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`，需执行沙箱） |
+| **VerificationPort** | 跑测试/lint/构建得出 Verdict | ⬜ 假 | 真实（测试框架 + lint + 构建工具集成） |
+| **DeliveryPort** | 创建分支、push、开 MR、（后续）编排合并 | ⬜ 假 | 真实（GitLab API） |
 
 **核心工作**：
-- 实现 Workspace ACL：git mirror 管理、worktree 生命周期
-- 集成 Claude Code headless runner：Context/Design/Review/Execution 共用
-- 集成验证工具链：pytest / ruff / mypy / 构建脚本
-- 集成 GitLab API：MR 创建、合并权限、pipeline 状态查询
-- 集成 Feishu/Lark API：通知卡片、审批流、事件回调
+- ✅ 实现 Workspace ACL：bare mirror 管理、worktree 生命周期（`GitWorkspaceAdapter`，REUSE/FETCH/CREATE 三模式）
+- ✅ Claude Code headless runner 基座（`ClaudeCodeRunner`：子进程调 `claude` CLI + 超时/重试 + transient/fatal/logic 失败分类）
+- ◐ 复用该基座实现 Design / Review / Execution 三个真实适配器
+- ⬜ 把真实 `WorkspacePort` 接入运行主循环，让 DESIGN 及之后阶段真实驱动
+- ⬜ 集成验证工具链：pytest / ruff / mypy / 构建脚本
+- ⬜ 集成 GitLab API：MR 创建、合并权限、pipeline 状态查询
+- ⏸ 集成 Feishu/Lark API：通知卡片、审批流、事件回调 —— **暂不纳入当前规划**（后续再议）
 
 **端到端冒烟测试**：
 - 创建一个真实的 SmallChange 需求（从 Feishu 或本地文件）
@@ -316,12 +351,20 @@ AutonomyDial = {
            ║  - 治理文件 + 质量门禁                 ║
            ╚═══════════════════════════════════════╝
                       ↓
+2026-07-25 ╔═══════════════════════════════════════╗
+           ║  🖥️ 控制台 + Project（0.1.2）- ✓ 交付 ║
+           ║  - Project 领域聚合 + 端口             ║
+           ║  - FastAPI 后端 + React 前端控制台     ║
+           ║  - 本地仓库直挂 worktree               ║
+           ╚═══════════════════════════════════════╝
+                      ↓
            ╔═══════════════════════════════════════╗
-           ║  🚀 切片 2：真实 ACL（待定）          ║
+           ║  🚀 切片 2：真实 ACL - ◐ 进行中       ║
            ║  目标：2-3 周                          ║
-           ║  - 7 个假适配器 → 真实实现             ║
-           ║  - E2E 冒烟测试                       ║
-           ║  - Observability 基础                  ║
+           ║  - Workspace/Context ✓ 已落地         ║
+           ║  - Design/Review/Execution/Verify/    ║
+           ║    Delivery 5 个 → 真实实现            ║
+           ║  - E2E 冒烟测试 + Observability 基础   ║
            ╚═══════════════════════════════════════╝
                       ↓
            ╔═══════════════════════════════════════╗
@@ -357,7 +400,7 @@ AutonomyDial = {
 
 ### 质量底线
 
-✓ 已达成：48 个测试覆盖核心逻辑，未来新切片应保持或提升测试覆盖率
+✓ 已达成：切片 1 起以约 48 个测试建立核心覆盖，随控制台/适配器推进已扩至约 230 个后端测试（另有前端 vitest 套件），未来新切片应保持或提升测试覆盖率
 
 **持续关注**：
 - 每个切片完成时 `pytest -q` 全绿
@@ -408,5 +451,5 @@ A：修订《战略方向与领域模型》（若影响架构边界），重新�
 
 ---
 
-**最后更新**：2026-07-16  
-**下一次计划评审**：（待安排）
+**最后更新**：2026-07-25（与代码对齐；补入控制台里程碑、标注切片 2 进行中）  
+**下一次计划评审**：（随迭代规划确定）

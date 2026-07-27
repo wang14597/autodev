@@ -179,3 +179,31 @@ def test_view_project_detail_empty_workitems():
 
     assert detail["workitem_count"] == 0
     assert detail["workitems"] == []
+
+
+# --- 切片 2.1：view_detail 暴露 triage 字段 ---
+
+
+def test_view_detail_projects_triage_when_present() -> None:
+    from autodev.domain.artifacts import TriageArtifact
+    from autodev.domain.enums import RiskLevel, TaskType, WorkspaceMode
+
+    wi = _work_item(S.CONTEXT)
+    wi.add_artifact(
+        "triage",
+        TriageArtifact(
+            TaskType.SMALL_CHANGE, 0.7, WorkspaceMode.REUSE, RiskLevel.HIGH, ("keyword:delete",)
+        ),
+    )
+    detail = view_detail(wi, lambda _p: "")
+    triage = detail["triage"]
+    assert triage is not None
+    assert triage["risk"] == "HIGH"
+    assert triage["level"] == "SMALL_CHANGE"
+    assert triage["confidence"] == 0.7
+    assert triage["signals"] == ["keyword:delete"]
+
+
+def test_view_detail_triage_none_when_absent() -> None:
+    wi = _work_item(S.INTAKE)
+    assert view_detail(wi, lambda _p: "")["triage"] is None

@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.artifacts import ContextArtifact, TriageArtifact
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
@@ -90,10 +90,21 @@ def view_detail(wi: WorkItem, read_text: Callable[[str], str]) -> dict[str, obje
     if wi.state is S.FAILED:
         failure = {"reason": wi.history[-1].reason if wi.history else ""}
 
+    triage: dict[str, object] | None = None
+    if "triage" in wi.artifacts:
+        t = cast(TriageArtifact, wi.artifacts["triage"])
+        triage = {
+            "level": t.level.name,
+            "confidence": t.confidence,
+            "risk": t.risk.name,
+            "signals": list(t.signals),
+        }
+
     detail: dict[str, object] = dict(view_summary(wi))
     detail["stages"] = stage_views(wi)
     detail["context"] = context
     detail["failure"] = failure
+    detail["triage"] = triage
     return detail
 
 

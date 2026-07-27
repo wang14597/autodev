@@ -16,7 +16,7 @@ from autodev.domain.artifacts import (
     TriageArtifact,
     VerificationArtifact,
 )
-from autodev.domain.enums import GatePoint, TaskType, WorkflowState, WorkspaceMode
+from autodev.domain.enums import GatePoint, RiskLevel, TaskType, WorkflowState, WorkspaceMode
 from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.value_objects import (
     AutonomyDial,
@@ -159,6 +159,8 @@ def _artifact_to_dict(a: object) -> dict:
             "level": a.level.name,
             "confidence": a.confidence,
             "workspace_mode": a.workspace_mode.name,
+            "risk": a.risk.name,
+            "signals": list(a.signals),
         }
     if isinstance(a, ContextArtifact):
         return {
@@ -190,8 +192,13 @@ def _artifact_to_dict(a: object) -> dict:
 def _artifact_from_dict(d: dict) -> object:
     t = d["__t"]
     if t == "TriageArtifact":
+        # 旧行无 risk/signals 键 → 兜底 LOW/空（向后兼容）。
         return TriageArtifact(
-            TaskType[d["level"]], d["confidence"], WorkspaceMode[d["workspace_mode"]]
+            TaskType[d["level"]],
+            d["confidence"],
+            WorkspaceMode[d["workspace_mode"]],
+            RiskLevel[d.get("risk", "LOW")],
+            tuple(d.get("signals", [])),
         )
     if t == "ContextArtifact":
         return ContextArtifact(

@@ -55,6 +55,10 @@ def _load_repo_map(raw: str) -> dict[str, str]:
 
 
 def build_app_from_env() -> FastAPI:
+    return create_app(build_env_service())
+
+
+def build_env_service() -> ProjectConsoleService:
     home = Path(os.environ.get("AUTODEV_HOME", str(Path.home() / ".autodev"))).expanduser()
     home.mkdir(parents=True, exist_ok=True)
 
@@ -89,6 +93,4 @@ def build_app_from_env() -> FastAPI:
     )
     engine = Engine(repo, publisher, ctx, clock=lambda: datetime.now(UTC))
     executor = ThreadPoolExecutorAdapter()
-    service = ProjectConsoleService(project_repo, repo, workspace, engine, executor, registry)
-
-    return create_app(service)
+    return ProjectConsoleService(project_repo, repo, workspace, engine, executor, registry)

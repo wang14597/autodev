@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **切片 2.1「可信分诊驱动信任门禁」+ 确定性控制台 E2E 底座**：分诊从桩升级为确定性启发式——`TriagePolicy` 依据关键词（危险/琐碎）、规模、验收缺失产出真实 `TaskType` + 置信度 + 新增 `RiskLevel`（LOW/MEDIUM/HIGH）+ 可解释 `signals`；`TriageArtifact` 增 `risk`/`signals`（带默认值，向后兼容；SQLite 序列化器同步、旧行兜底 LOW）。`GatePolicy` 变为**风险感知**：`needs_human = dial 要求 OR 风险=HIGH OR 置信<0.5`（OR 单调——风险信号只收紧、绝不放宽 dial）。新增确定性演示适配器 `src/autodev/adapters/demo.py`（`DemoWorkspace`/`DemoContext`/…/`DemoDelivery` + 按运行时 repo 名动态构造的放行 `release_all_dial` 工厂）与**独立演示组合根** `webapp/demo_config.py:build_demo_app`（内存仓储 + 演示适配器 + 真实 Triage/Gate + `FULL_DRIVE` 全生命周期驱动；生产入口绝不引用）。控制台新增 `POST /api/workitems/{id}/approve`（复用领域 `resume_work_item` + 再驱动，含 deny 路径）；`view_detail` 投影 `triage` 字段。驱动循环 `_bounded_drive` 增可注入 `run_states`（生产默认 `RUN` 止于 CONTEXT）。安全回归守卫：测试锁死生产组合根的 Execution/Verification/Design 端口在沙箱就绪前仍为 `UnavailableStage` 桩。前端新增 `TriageBadge`（type/confidence/risk/signals）+ 工作项详情页人审「批准/拒绝」按钮（`useApproveWorkItem`）。可复现浏览器 E2E：`tests/e2e/browser_e2e.sh`（agent-browser 驱动，起演示服务器→低风险自动到 DONE / 高风险挂起 WAIT_HUMAN 显示 risk=HIGH / 批准×2 到 DONE，全断言通过）。规划见 `docs/superpowers/specs/2026-07-25-autodev-slice2-iteration-plan-design.md`（经两轮 subagent 审核 R1→R2 APPROVE）。
 - **默认分支选择器改用 antd**：引入 Ant Design（antd v6）+ `ConfigProvider` 主题（对齐设计令牌），项目默认分支从原生 `<select>` 换成 antd `Select`（`showSearch` 模糊搜索、更美观）。
 - **切换项目默认分支**：项目详情页可从下拉(列出仓库 `origin/*` 分支)切换默认分支;切换会 fetch 校验分支存在并更新项目。新增 `WorkspacePort.list_branches`、`GET /api/projects/{id}/branches`、`POST /api/projects/{id}/branch`。之后新建工作项即基于新默认分支。
 - **建工作项自动 fetch**：创建工作项时先对项目默认分支做一次 `git fetch`（best-effort，失败不阻断），保证该工作项的 worktree 基于默认分支的最新 `origin/<branch>`。（此前 fetch 只在建项目/刷新时做，工作项复用上次结果；现按需保证每个工作项都最新。）UI 术语统一为「默认分支」。
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation-consistency CI: Layer 3 non-blocking AI docs advisor, implemented as a **local `pre-push` hook** (`scripts/docs_advise.py`, wired via the `pre-commit` `pre-push` stage) that prints a short staleness-suspect list to the developer's terminal before `git push`; it degrades gracefully (never blocks the push) whenever the environment is unavailable (no VPN, no local Claude Code session, timeout, etc.).
 
 ### Changed
+- **ROADMAP 与代码对齐（2026-07-25）**：`ROADMAP.md` 补入「控制台 + Project 一等概念（0.1.2）」里程碑，切片 2 标注为进行中（`WorkspacePort`/`ContextPort` 两个真实 ACL 适配器已落地，其余 5 个仍为假件），并校准测试规模与时间线。同步在 `docs/.doc-allowlist.txt` 加入前端 antd 组件名（ConfigProvider/Select）以修复既有的伪造符号误报。
 - `ContextArtifact` changed from carrying inline collected content to a **pointer**: it now holds `context_file` (path to the persisted Markdown result under `~/.autodev`) instead of embedding the context text directly in the artifact.
 - Repo CI migrated from GitLab CI to **GitHub Actions** (`.github/workflows/ci.yml`); the contribution flow for this repo is now a **GitHub PR** (fork/branch → PR) instead of a GitLab MR.
 - PR template and CODEOWNERS moved to `.github/pull_request_template.md` and `.github/CODEOWNERS` respectively (`.gitlab/` and `.gitlab-ci.yml` removed).

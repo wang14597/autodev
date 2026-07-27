@@ -48,6 +48,8 @@ class ConsoleService(Protocol):
 
     def get_workitem(self, work_item_id: str) -> WorkItem | None: ...
 
+    def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None: ...
+
 
 class CreateProjectRequest(BaseModel):
     name: str
@@ -61,6 +63,10 @@ class CreateWorkItemRequest(BaseModel):
 
 class SetBranchRequest(BaseModel):
     branch: str
+
+
+class ApproveRequest(BaseModel):
+    approved: bool = True
 
 
 def _frontend_dist() -> Path | None:
@@ -140,6 +146,16 @@ def create_app(service: ConsoleService) -> FastAPI:
     @app.get("/api/workitems/{work_item_id}")
     def get_workitem(work_item_id: str) -> dict[str, object]:
         wi = service.get_workitem(work_item_id)
+        if wi is None:
+            raise HTTPException(status_code=404, detail="work item not found")
+        return view_detail(wi, _read_text)
+
+    @app.post("/api/workitems/{work_item_id}/approve")
+    def approve_workitem(work_item_id: str, payload: ApproveRequest) -> dict[str, object]:
+        try:
+            wi = service.approve_workitem(work_item_id, payload.approved)
+        except Exception as e:  # noqa: BLE001 领域不变式（非 WAIT_HUMAN 等）→ 400
+            raise HTTPException(status_code=400, detail=str(e)) from e
         if wi is None:
             raise HTTPException(status_code=404, detail="work item not found")
         return view_detail(wi, _read_text)

@@ -35,10 +35,20 @@ export interface StageView {
   status: StageStatus
 }
 
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
+
+export interface TriageView {
+  level: string
+  confidence: number
+  risk: RiskLevel
+  signals: string[]
+}
+
 export interface WorkItemDetail extends WorkItemSummary {
   stages: StageView[]
   context: { markdown: string; context_file: string } | null
   failure: { reason: string } | null
+  triage: TriageView | null
 }
 
 export interface Project {
