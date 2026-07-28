@@ -25,7 +25,7 @@ AutoDev 采用**六边形架构（Ports & Adapters）**，遵循领域驱动设�
 │                   核心域：编排 Orchestration                  │
 │                 （WorkItem 状态机 + 9 阶段流转）             │
 │                  · 支撑域：需求接入、方案评审                  │
-│             · 出站端口：9 个 ACL 适配器实现的接口            │
+│             · 出站端口：11 个 ACL 适配器实现的接口           │
 └─────────────┬───────────────────────────────────────────────┘
       │ 持久化 │ 工作区准备 │ 智能体执行 │ 验证 │ 交付 │ 通知
       ▼       ▼           ▼            ▼      ▼      ▼
@@ -60,7 +60,7 @@ autodev/
 │   │   ├── artifacts.py            # <!-- fact:artifacts -->8 个阶段产物（TriageArtifact...DeliveryArtifact）
 │   │   ├── events.py               # <!-- fact:events -->4 个领域事件（WorkItemCreated、HumanApprovalRequested、WorkItemCompleted、WorkItemFailed）
 │   │   ├── work_item.py            # WorkItem 聚合根 + 状态不变式
-│   │   ├── policies.py             # TriagePolicy、GatePolicy、TransitionRules、RetryPolicy
+│   │   ├── policies.py             # GatePolicy、AutonomyPolicy、TransitionRules、RetryPolicy
 │   │   └── ports.py                # 出站端口协议（Protocol）定义
 │   │
 │   ├── application/                # 应用层（协调端口 + 执行流转）
@@ -201,25 +201,27 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 - 9 阶段处理器（需求→分诊→上下文→设计→评审→实现→验收标准→验收→提 MR）
 
 ✅ **领域服务与策略**
-- TriagePolicy：任务分类（SmallChange）与工作区模式选择
-- GatePolicy：门禁判定（REVIEW_GATE、MERGE_GATE）与自动化旋钮（AutonomyDial）
+- 分诊：任务分类 / 风险 / 意图（是否仅咨询）经 `TriagePort` 交由 LLM（`LlmTriageAdapter`，直连 Messages API/Opus 4.8）判定；核心域只消费 `TriageSignal`，不含分诊规则
+- AutonomyPolicy：上下文后决策（`autonomy_enabled` 关→挂起 CONTEXT_GATE 交用户；开+咨询→仅收集完成；开+落地→继续），安全优先（分诊不可用/低置信度一律先挂起）
+- GatePolicy：风险感知门禁判定（REVIEW_GATE、MERGE_GATE、CONTEXT_GATE），OR-单调放行 + 自动化旋钮（AutonomyDial）
 - TransitionRules：状态转移规则与合法性校验
 - RetryPolicy：失败重试与回退决策
 
 ✅ **出站端口**
 - <!-- fact:ports -->11 个端口协议已定义：WorkItemRepository、ProjectRepository、WorkspacePort、TriagePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
-- **5 个端口已真实实现**：
+- **6 个端口已真实实现**：
   - WorkItemRepository → SQLite 适配器（持久化/查询）
   - ProjectRepository → SQLite 适配器（项目聚合持久化）
   - EventPublisher → 内存事件总线
+  - TriagePort → LlmTriageAdapter（直连 Messages API/Opus 4.8，强制 tool_use 结构化输出）
   - WorkspacePort → GitWorkspaceAdapter（git bare mirror + worktree，F1）
   - ContextPort → ClaudeContextAdapter（Claude Code 两遍收集→复核，F3）
-- **5 个端口当前为假实现**（mock/stub），真实 ACL 见下方"计划中"
-- 另有驱动侧适配器：项目控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），以 Project 为中心，用 F1+F3 驱动工作项走 需求录入→分诊→上下文
+- **5 个端口当前为假实现**（mock/stub）：Design/Review/Execution/Verification/Delivery，真实 ACL 见下方"计划中"
+- 另有驱动侧适配器：项目控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），以 Project 为中心，用 F1+F3+真实分诊驱动工作项走 需求录入→分诊→上下文（按 `autonomy_enabled` 开关停在决策点或继续）
 
 ✅ **测试覆盖**
-- **48 个测试全部通过**
-- 涵盖：值对象、聚合不变式、状态转移、重试政策、阶段处理器、端到端流程
+- **290 个测试全部通过**（另有 2 个 live/E2E 用例默认跳过，需 `AUTODEV_LIVE=1` 触发）
+- 涵盖：值对象、聚合不变式、状态转移、重试政策、分诊/自主策略、阶段处理器、LLM 分诊契约、端到端流程
 
 ### 计划中（后续切片）
 
@@ -239,6 +241,7 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 ✓ ProjectRepository         → SQLite 适配器（项目聚合）
 ✓ EventPublisher            → 内存事件总线
 
+✓ TriagePort              → LlmTriageAdapter（直连 Messages API/Opus 4.8）
 ✓ WorkspacePort           → GitWorkspaceAdapter（git mirror + worktree，F1）
 ✓ ContextPort             → ClaudeContextAdapter（Claude Code 收集→复核，F3）
 ✗ DesignPort              → 假实现（阶段 2 真实化）
@@ -289,7 +292,7 @@ A：切片 1 的目标是快速见效与精准贴合"AI 阶段 + 人工审批挂
 A：这是职责铁律#1（核心域纯净）的落地。不含 git/GitLab/飞书 概念的纯领域模型，才能保证核心逻辑的稳定性、可测试性、与外部系统解耦。所有外部交互通过 ACL 适配器翻译。
 
 **Q：如何添加新的任务类型（MediumFeature/ComplexFeature）？**
-A：修改 TaskType 枚举 → 扩展 TriagePolicy 与 Solution 的处理器 → 添加对应测试。见《战略方向与领域模型》第 8 节"演进路线"。
+A：修改 TaskType 枚举 → 更新分诊提示词（`LlmTriageAdapter`）以覆盖新类型 → 扩展 Solution 的处理器 → 添加对应测试。见《战略方向与领域模型》第 8 节"演进路线"。
 
 **Q：为什么要版本化产物？**
 A：支持失败时的精确回退与重跑审计。一个阶段失败后，可以回退到前序阶段修复后重新推进，新产物追加到版本列表，完整保留执行历史。

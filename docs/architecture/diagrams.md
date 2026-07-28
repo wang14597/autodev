@@ -5,7 +5,7 @@
 
 ## 1. 系统架构 / 六边形（Ports & Adapters）
 
-核心编排域位于中心，通过 10 个出站端口与外部世界解耦；目前 `WorkItemRepository`（SQLite / 内存两种实现）、`ProjectRepository`（SQLite / 内存，项目聚合持久化）、`EventPublisher`（内存事件总线）、`WorkspacePort`（GitWorkspaceAdapter，F1）、`ContextPort`（ClaudeContextAdapter，F3）已有生产可用的适配器，其余 5 个端口在当前仅有测试用的 Fake 实现（`tests/fakes.py`），尚待真实 ACL 适配器落地。
+核心编排域位于中心，通过 11 个出站端口与外部世界解耦；目前 `WorkItemRepository`（SQLite / 内存两种实现）、`ProjectRepository`（SQLite / 内存，项目聚合持久化）、`EventPublisher`（内存事件总线）、`WorkspacePort`（GitWorkspaceAdapter，F1）、`ContextPort`（ClaudeContextAdapter，F3）、`TriagePort`（LlmTriageAdapter，直连 Messages API / Opus 4.8）已有生产可用的适配器，其余 5 个端口（Design/Review/Execution/Verification/Delivery）在当前仅有测试/演示用的 Fake 实现（`tests/fakes.py` / `adapters/demo.py`），沙箱就绪前保持桩件。
 
 ```mermaid
 flowchart LR
@@ -18,6 +18,7 @@ flowchart LR
     ENGINE --> P1[["WorkItemRepository"]]
     ENGINE --> P2[["EventPublisher"]]
     ENGINE --> P10[["ProjectRepository"]]
+    ENGINE --> P11[["TriagePort"]]
     ENGINE --> P3[["WorkspacePort"]]
     ENGINE --> P4[["ContextPort"]]
     ENGINE --> P5[["DesignPort"]]
@@ -29,6 +30,7 @@ flowchart LR
     P1 --> A1["SQLite 适配器 + 内存适配器<br/>(sqlite_repository.py / memory_repository.py)"]:::impl
     P2 --> A2["InMemoryEventBus<br/>(event_bus.py)"]:::impl
     P10 --> A10["SQLite + 内存适配器<br/>(project_repository.py)"]:::impl
+    P11 --> A11["Triage — LlmTriageAdapter<br/>(triage_llm.py，直连 Messages API/Opus 4.8)"]:::impl
     P3 --> A3["Workspace ACL — GitWorkspaceAdapter<br/>(workspace_git.py，F1)"]:::impl
     P4 --> A4["Context ACL — ClaudeContextAdapter<br/>(context_claude.py，F3)"]:::impl
     P5 --> A5["Design ACL — 仅 FakeDesign"]:::fake
@@ -41,7 +43,7 @@ flowchart LR
     classDef fake fill:#f5e3c0,stroke:#b8860b,stroke-width:2px,stroke-dasharray: 4 3;
 ```
 
-图例：绿色 = 已实现（5 个：`WorkItemRepository`、`ProjectRepository`、`EventPublisher`、`WorkspacePort`、`ContextPort`）；橙色虚线 = 当前仅有 Fake、待补真实 ACL 适配器（5 个：Design/Review/Execution/Verification/Delivery）。另有一个驱动侧适配器 —— 项目控制台（`src/autodev/webapp/` + `frontend/`，以 Project 为中心），用 F1+F3 驱动工作项至 CONTEXT。
+图例：绿色 = 已实现（6 个：`WorkItemRepository`、`ProjectRepository`、`EventPublisher`、`WorkspacePort`、`ContextPort`、`TriagePort`）；橙色虚线 = 当前仅有 Fake、待补真实 ACL 适配器（5 个：Design/Review/Execution/Verification/Delivery）。演示/测试组合根用确定性 `FakeTriage`（`adapters/demo.py`）替代真实分诊以保证可重复。另有一个驱动侧适配器 —— 项目控制台（`src/autodev/webapp/` + `frontend/`，以 Project 为中心），用 F1+F3+真实分诊驱动工作项。
 
 ## 2. 限界上下文映射
 
@@ -79,11 +81,13 @@ flowchart TB
     ORCH -. "事件订阅: 全量领域事件（trace/日志/看板）" .-> OBSERV
 ```
 
-说明：`ContextPort` / `DesignPort` / `ReviewPort` 三个端口在概念上归属 Solution/Execution 上下文的智能体能力（详见架构基准第 4 节脚注），为避免与图 1 的端口视角重复，本图仅按“6 个通用上下文 + 2 个支撑上下文”的力度展示上下文关系。
+说明：`TriagePort`（LLM 分诊）/ `ContextPort` / `DesignPort` / `ReviewPort` 等端口在概念上归属 Intake/Solution/Execution 上下文的智能体能力（详见架构基准第 4 节脚注），为避免与图 1 的端口视角重复，本图仅按“6 个通用上下文 + 2 个支撑上下文”的力度展示上下文关系。
 
 ## 3. WorkItem 状态机
 
-状态与转移**逐条**对照 `src/autodev/domain/work_item.py::_build_allowed()` 生成：10 个线性阶段（INTAKE→…→DONE）、2 条回退（VERIFY→IMPL、REVIEW→DESIGN）、2 个人审挂起点（REVIEW/SUBMIT_MR→WAIT_HUMAN）、WAIT_HUMAN 的两种唤醒去向（IMPL/DONE），以及“任意非终态→FAILED”的收敛兜底。
+状态与转移**逐条**对照 `src/autodev/domain/work_item.py::_build_allowed()` 生成：10 个线性阶段（INTAKE→…→DONE）、2 条回退（VERIFY→IMPL、REVIEW→DESIGN）、**3 个人审挂起点**（CONTEXT/REVIEW/SUBMIT_MR→WAIT_HUMAN）、**上下文后「仅收集完成」直达**（CONTEXT→DONE）、WAIT_HUMAN 的**三种唤醒去向**（DESIGN/IMPL/DONE），以及“任意非终态→FAILED”的收敛兜底。
+
+其中 `CONTEXT→WAIT_HUMAN`（CONTEXT_GATE）、`CONTEXT→DONE`（仅收集）、`WAIT_HUMAN→DESIGN`（继续后续流程）由 `autonomy_enabled` 开关与 `AutonomyPolicy` 的上下文后决策驱动（关→挂起交用户；开+咨询→仅收集完成；开+落地→继续）。
 
 ```mermaid
 stateDiagram-v2
@@ -102,10 +106,13 @@ stateDiagram-v2
     REVIEW --> DESIGN : 回退(方案需修改)
     VERIFY --> IMPL : 回退(验收未通过)
 
+    CONTEXT --> WAIT_HUMAN : 挂起(CONTEXT_GATE)
+    CONTEXT --> DONE : 仅收集完成(collect-only)
     REVIEW --> WAIT_HUMAN : 挂起(REVIEW_GATE)
     SUBMIT_MR --> WAIT_HUMAN : 挂起(MERGE_GATE)
-    WAIT_HUMAN --> IMPL : 人工打回
-    WAIT_HUMAN --> DONE : 人工批准(MERGE_GATE)
+    WAIT_HUMAN --> DESIGN : 继续后续流程(CONTEXT_GATE proceed)
+    WAIT_HUMAN --> IMPL : 人工打回 / REVIEW_GATE 放行
+    WAIT_HUMAN --> DONE : 人工批准(MERGE_GATE) / 仅收集(close)
 
     INTAKE --> FAILED : 不可恢复失败
     TRIAGE --> FAILED : 不可恢复失败
@@ -132,10 +139,10 @@ sequenceDiagram
     participant Store as Store(WorkItemRepository)
     participant Engine
     participant Handlers
-    participant Ports as Ports(Workspace/Context/Design/Review/Execution/Verification/Delivery)
+    participant Ports as Ports(Triage/Workspace/Context/Design/Review/Execution/Verification/Delivery)
     participant EventBus
 
-    Trigger->>Store: create_work_item(requirement, repo_ref, autonomy_dial)
+    Trigger->>Store: create_work_item(requirement, repo_ref, autonomy_dial, autonomy_enabled)
     Store-->>Trigger: WorkItem(state=INTAKE)
     Trigger->>EventBus: publish(WorkItemCreated)
 
@@ -148,14 +155,15 @@ sequenceDiagram
         Engine->>Store: save(state=TRIAGE)
 
         Engine->>Handlers: advance(TRIAGE)
-        Handlers->>Ports: repo_status(repo_ref)
-        Ports-->>Handlers: RepoStatus
+        Handlers->>Ports: repo_status(repo_ref) + triage.classify(requirement)
+        Ports-->>Handlers: RepoStatus, TriageSignal(level/risk/intent/confidence)
         Handlers-->>Engine: StageOutcome.ok(triage)
         Engine->>Store: save(state=CONTEXT)
 
         Engine->>Handlers: advance(CONTEXT)
         Handlers->>Ports: provision() + gather()
         Ports-->>Handlers: WorkspaceHandle, ContextArtifact
+        Note over Handlers: AutonomyPolicy 上下文后决策(本例 autonomy_enabled=开 且意图=落地 → proceed)<br/>关→suspend(CONTEXT_GATE);开+咨询→finish(DONE 仅收集)
         Handlers-->>Engine: StageOutcome.ok(context)
         Engine->>Store: save(state=DESIGN)
 
@@ -228,6 +236,7 @@ classDiagram
         +WorkItemId id
         +ProjectId project_id
         +str base_branch
+        +bool autonomy_enabled
         +RepoRef repo_ref
         +Requirement requirement
         +AutonomyDial autonomy_dial
@@ -287,6 +296,9 @@ classDiagram
         +TaskType level
         +float confidence
         +WorkspaceMode workspace_mode
+        +RiskLevel risk
+        +tuple signals
+        +TriageIntent intent
     }
     class ContextArtifact {
         +str workspace_location
