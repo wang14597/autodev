@@ -20,9 +20,14 @@ from autodev.domain.value_objects import (
     RepoRef,
     RepoStatus,
     Requirement,
+    TriageSignal,
     WorkspaceHandle,
 )
 from autodev.domain.work_item import WorkItem
+
+
+class TriagePort(Protocol):
+    def classify(self, requirement: Requirement) -> TriageSignal: ...
 
 
 class WorkspacePort(Protocol):

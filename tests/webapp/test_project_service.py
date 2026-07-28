@@ -11,12 +11,13 @@ from autodev.adapters.project_repository import InMemoryProjectRepository
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
 from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.enums import GatePoint
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.webapp.projects import ProjectRegistry
 from autodev.webapp.service import ProjectConsoleService, SyncExecutor
 from autodev.webapp.stubs import UnavailableStage
-from tests.fakes import FakeContext, FakeWorkspace
+from tests.fakes import FakeContext, FakeTriage, FakeWorkspace
 
 NOW = datetime(2026, 7, 24, 12, 0, 0)
 
@@ -31,7 +32,7 @@ def _engine(work_repo, workspace):
         stage,
         stage,
         stage,
-        TriagePolicy(),
+        FakeTriage(),
         GatePolicy(),
     )
     return Engine(work_repo, _NoopPublisher(), ctx, clock=lambda: NOW)
@@ -145,7 +146,8 @@ def test_create_project_rolls_back_when_prepare_fails(tmp_path: Path):
     assert "demo" not in registry.repo_map  # 回滚, 无残留
 
 
-def test_create_workitem_drives_to_design_and_sets_project_id(tmp_path: Path):
+def test_create_workitem_rests_at_context_gate_and_sets_project_id(tmp_path: Path):
+    # 默认关自主 → 有界驱动收集上下文后停在 CONTEXT_GATE；重点验证 project_id 归属。
     svc, project_repo, _work_repo, _workspace, _registry = _service(tmp_path)
     project_id = svc.create_project("demo", "git@host:team/demo.git")
 
@@ -153,7 +155,7 @@ def test_create_workitem_drives_to_design_and_sets_project_id(tmp_path: Path):
     wi = svc.get_workitem(work_item_id)
 
     assert wi is not None
-    assert wi.state == S.DESIGN
+    assert wi.state == S.WAIT_HUMAN and wi.pending_gate is GatePoint.CONTEXT_GATE
     project = project_repo.get_by_name("demo")
     assert wi.project_id == project.id
     assert wi.repo_ref.name == project.name

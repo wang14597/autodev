@@ -12,6 +12,15 @@ describe('BriefDocument', () => {
     expect(container.textContent).toContain('/tmp/ctx.md')
   })
 
+  it('is collapsible: renders a <details>/<summary>, open by default', () => {
+    const { container } = render(<BriefDocument markdown={'# 标题'} contextFile="/tmp/ctx.md" />)
+    const details = container.querySelector('details')
+    expect(details).not.toBeNull()
+    expect(details?.open).toBe(true) // 默认展开
+    const summary = container.querySelector('summary')
+    expect(summary?.textContent).toContain('上下文简报')
+  })
+
   it('strips <script> tags injected via markdown/HTML', () => {
     const { container } = render(
       <BriefDocument

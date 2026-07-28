@@ -6,12 +6,15 @@ import { FailurePanel } from '../components/FailurePanel'
 import { LifelinePipeline } from '../components/LifelinePipeline'
 import { Notice } from '../components/Notice'
 import { StatusBadge } from '../components/StatusBadge'
+import { TriageBadge } from '../components/TriageBadge'
+import { useDecideWorkItem } from '../hooks/useDecideWorkItem'
 import { useWorkItem } from '../hooks/useWorkItem'
 import styles from './WorkItemDetailPage.module.css'
 
 export function WorkItemDetailPage() {
   const { pid, id } = useParams<{ pid: string; id: string }>()
   const { data: detail, isError, error, isLoading } = useWorkItem(id)
+  const decide = useDecideWorkItem(id)
 
   if (isError) {
     if (error instanceof ApiError && error.status === 404) {
@@ -44,6 +47,77 @@ export function WorkItemDetailPage() {
           <StatusBadge state={detail.state} />
         </div>
       </section>
+
+      {detail.triage && (
+        <section className={styles.section}>
+          <p className={styles.sectionTitle}>分诊</p>
+          <TriageBadge triage={detail.triage} />
+        </section>
+      )}
+
+      {detail.state === 'WAIT_HUMAN' && (
+        <section className={styles.section} data-testid="approval-panel">
+          <p className={styles.sectionTitle}>人审门禁</p>
+          {detail.pending_gate === 'CONTEXT_GATE' ? (
+            <>
+              <p className={styles.gateHint}>
+                上下文已收集完成。是否继续走后续开发流程，还是就此完成（仅收集需求）？
+              </p>
+              <div className={styles.gateActions}>
+                <button
+                  type="button"
+                  className={styles.approveBtn}
+                  data-testid="approve-button"
+                  disabled={decide.isPending}
+                  onClick={() => decide.mutate('proceed')}
+                >
+                  继续后续流程
+                </button>
+                <button
+                  type="button"
+                  className={styles.denyBtn}
+                  data-testid="close-button"
+                  disabled={decide.isPending}
+                  onClick={() => decide.mutate('close')}
+                >
+                  完成（仅收集）
+                </button>
+                <button
+                  type="button"
+                  className={styles.denyBtn}
+                  disabled={decide.isPending}
+                  onClick={() => decide.mutate('reject')}
+                >
+                  拒绝
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className={styles.gateHint}>该工作项风险偏高或置信不足，已挂起等待人工确认。</p>
+              <div className={styles.gateActions}>
+                <button
+                  type="button"
+                  className={styles.approveBtn}
+                  data-testid="approve-button"
+                  disabled={decide.isPending}
+                  onClick={() => decide.mutate('proceed')}
+                >
+                  批准继续
+                </button>
+                <button
+                  type="button"
+                  className={styles.denyBtn}
+                  disabled={decide.isPending}
+                  onClick={() => decide.mutate('reject')}
+                >
+                  拒绝
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       <section className={styles.section}>
         <p className={styles.sectionTitle}>生命周期</p>

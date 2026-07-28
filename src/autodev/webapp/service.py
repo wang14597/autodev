@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Protocol, cast
 
 from autodev.application.engine import Engine
+from autodev.application.entrypoints import decide_work_item
 from autodev.domain.artifacts import ContextArtifact
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import StageError
@@ -23,8 +24,22 @@ from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement, Wor
 from autodev.domain.work_item import WorkItem
 from autodev.webapp.projects import ProjectRegistry
 
-# 有界驱动允许自动跑的阶段集合：仅到 CONTEXT 为止，绝不进入 DESIGN 及之后。
+# 有界驱动允许自动跑的阶段集合：生产默认仅到 CONTEXT 为止，绝不进入 DESIGN 及之后。
 RUN: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
+# 全生命周期驱动集合：仅供演示组合根（下游为确定性演示适配器，不触达抛错桩）。
+FULL_DRIVE: frozenset[S] = frozenset(
+    {
+        S.INTAKE,
+        S.TRIAGE,
+        S.CONTEXT,
+        S.DESIGN,
+        S.REVIEW,
+        S.IMPL,
+        S.ACCEPT,
+        S.VERIFY,
+        S.SUBMIT_MR,
+    }
+)
 
 
 def _default_clock() -> datetime:
@@ -42,18 +57,24 @@ class SyncExecutor:
         fn()
 
 
-def _bounded_drive(repo: WorkItemRepository, engine: Engine, work_item_id: WorkItemId) -> None:
-    """有界自动驱动循环：止于 CONTEXT，绝不越界调用 DESIGN 及之后的桩端口。
+def _bounded_drive(
+    repo: WorkItemRepository,
+    engine: Engine,
+    work_item_id: WorkItemId,
+    run_states: frozenset[S] = RUN,
+) -> None:
+    """有界自动驱动循环：只在 `run_states` 内推进，越界即停。
 
-    抽成自由函数供 WorkItemConsoleService/ProjectConsoleService 共用，避免两个
-    服务各自维护一份等价的驱动循环。
+    生产默认 `run_states=RUN`（止于 CONTEXT，绝不越界调用 DESIGN 及之后的桩端口）；
+    演示组合根传 `FULL_DRIVE` 跑完全生命周期（下游为确定性演示适配器）。抽成自由函数
+    供 WorkItemConsoleService/ProjectConsoleService 共用。
     """
     while True:
         try:
             work_item = repo.get(work_item_id)
         except KeyError:
             return
-        if not work_item.is_runnable() or work_item.state not in RUN:
+        if not work_item.is_runnable() or work_item.state not in run_states:
             return
         engine.advance(work_item)
 
@@ -130,6 +151,8 @@ class ProjectConsoleService:
         clock: Callable[[], datetime] = _default_clock,
         id_gen_project: Callable[[], ProjectId] = ProjectId.new,
         id_gen_work: Callable[[], WorkItemId] = WorkItemId.new,
+        dial_factory: Callable[[str], AutonomyDial] = lambda _name: AutonomyDial.all_human(),
+        run_states: frozenset[S] = RUN,
     ) -> None:
         self._project_repo = project_repo
         self._work_repo = work_repo
@@ -140,6 +163,10 @@ class ProjectConsoleService:
         self._clock = clock
         self._id_gen_project = id_gen_project
         self._id_gen_work = id_gen_work
+        # dial_factory：按运行时 repo 名构造 AutonomyDial（生产默认全人审；演示传放行工厂）。
+        # run_states：驱动允许推进的阶段集合（生产默认 RUN 止于 CONTEXT；演示传 FULL_DRIVE）。
+        self._dial_factory = dial_factory
+        self._run_states = run_states
 
     def create_project(self, name: str, repo_input: str, branch: str = "") -> str:
         if not name or not name.strip():
@@ -251,7 +278,7 @@ class ProjectConsoleService:
         self._project_repo.delete(pid)
         return True
 
-    def create_workitem(self, project_id: str, goal: str) -> str:
+    def create_workitem(self, project_id: str, goal: str, autonomy_enabled: bool = False) -> str:
         if not goal or not goal.strip():
             raise ValueError("goal must not be empty")
         try:
@@ -272,14 +299,38 @@ class ProjectConsoleService:
             work_item_id,
             RepoRef(project.name),
             requirement,
-            AutonomyDial.all_human(),
+            self._dial_factory(project.name),
             self._clock(),
             project_id=project.id,
             base_branch=project.branch,
+            autonomy_enabled=autonomy_enabled,
         )
         self._work_repo.save(work_item)
-        self._executor.submit(lambda: _bounded_drive(self._work_repo, self._engine, work_item_id))
+        self._executor.submit(
+            lambda: _bounded_drive(self._work_repo, self._engine, work_item_id, self._run_states)
+        )
         return work_item_id.value
+
+    def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
+        """人审决策一个 WAIT_HUMAN 工作项：proceed / close / reject，随后（非终态）继续驱动。
+
+        复用领域入口 `decide_work_item`（正确处理 finalize/事件），proceed 后须显式再驱动
+        （resume 本身不驱动）。close/reject 到终态无需再驱动。
+        """
+        wid = WorkItemId(work_item_id)
+        try:
+            decide_work_item(wid, decision, self._work_repo, self._engine, self._clock())
+        except KeyError:
+            return None
+        if decision == "proceed":
+            self._executor.submit(
+                lambda: _bounded_drive(self._work_repo, self._engine, wid, self._run_states)
+            )
+        return self.get_workitem(work_item_id)
+
+    def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:
+        """向后兼容薄壳：True→proceed / False→reject，委托到 decide_workitem。"""
+        return self.decide_workitem(work_item_id, "proceed" if approved else "reject")
 
     def list_workitems(self, project_id: str) -> list[WorkItem]:
         pid = ProjectId(project_id)

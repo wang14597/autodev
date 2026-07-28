@@ -76,3 +76,40 @@
   background: var(--surface);
   padding: var(--space-4) var(--space-5);
 }
+
+.gateHint {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-bottom: var(--space-3);
+}
+
+.gateActions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.approveBtn,
+.denyBtn {
+  font-size: 0.85rem;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.approveBtn {
+  background: var(--done);
+  color: #fff;
+  border-color: var(--done);
+}
+
+.denyBtn {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.approveBtn:disabled,
+.denyBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

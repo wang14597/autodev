@@ -4,7 +4,7 @@ from autodev.application.context import StageContext
 from autodev.application.handlers import handle_context, handle_design, handle_intake, handle_triage
 from autodev.domain.enums import FailureKind, TaskType, WorkspaceMode
 from autodev.domain.ids import WorkItemId
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
 from tests.fakes import (
@@ -13,6 +13,7 @@ from tests.fakes import (
     FakeDesign,
     FakeExecution,
     FakeReview,
+    FakeTriage,
     FakeVerification,
     FakeWorkspace,
 )
@@ -29,7 +30,7 @@ def _ctx(ws=None):
         executor=FakeExecution(),
         verifier=FakeVerification(),
         delivery=FakeDelivery(),
-        triage_policy=TriagePolicy(),
+        triage=FakeTriage(),
         gate_policy=GatePolicy(),
     )
 
@@ -66,6 +67,7 @@ def test_context_provisions_workspace():
 
     wi = _wi()
     wi.type = TaskType.SMALL_CHANGE
+    wi.autonomy_enabled = True  # 开启自主 → 上下文后 proceed（success）；否则默认挂起 CONTEXT_GATE
     wi.add_artifact("triage", TriageArtifact(TaskType.SMALL_CHANGE, 0.9, WorkspaceMode.REUSE))
     out = handle_context(wi, _ctx(), NOW)
     assert out.kind == "success" and out.artifact_key == "context"

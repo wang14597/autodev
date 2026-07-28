@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.artifacts import ContextArtifact, TriageArtifact
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
@@ -71,6 +71,7 @@ def view_summary(wi: WorkItem) -> dict[str, object]:
         "repo": wi.repo_ref.name,
         "type": wi.type.name if wi.type is not None else None,
         "state": wi.state.name,
+        "autonomy_enabled": wi.autonomy_enabled,
         "created_at": wi.created_at.isoformat() if wi.created_at else None,
         "updated_at": wi.updated_at.isoformat() if wi.updated_at else None,
     }
@@ -90,10 +91,25 @@ def view_detail(wi: WorkItem, read_text: Callable[[str], str]) -> dict[str, obje
     if wi.state is S.FAILED:
         failure = {"reason": wi.history[-1].reason if wi.history else ""}
 
+    triage: dict[str, object] | None = None
+    if "triage" in wi.artifacts:
+        t = cast(TriageArtifact, wi.artifacts["triage"])
+        triage = {
+            "level": t.level.name,
+            "confidence": t.confidence,
+            "risk": t.risk.name,
+            "signals": list(t.signals),
+            "intent": t.intent.name,
+        }
+
     detail: dict[str, object] = dict(view_summary(wi))
     detail["stages"] = stage_views(wi)
     detail["context"] = context
     detail["failure"] = failure
+    detail["triage"] = triage
+    detail["pending_gate"] = wi.pending_gate.name if wi.pending_gate else None
+    # 仅收集完成：到 DONE 但无 delivery 产物（未走 DESIGN..SUBMIT_MR）。
+    detail["collect_only"] = wi.state is S.DONE and "delivery" not in wi.artifacts
     return detail
 
 

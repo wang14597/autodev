@@ -114,7 +114,7 @@ class FakeProjectConsoleService:
             del self._workitems[wid]
         return True
 
-    def create_workitem(self, project_id: str, goal: str) -> str:
+    def create_workitem(self, project_id: str, goal: str, autonomy_enabled: bool = False) -> str:
         if not goal or not goal.strip():
             raise ValueError("goal must not be empty")
         p = self._projects.get(project_id)
@@ -132,6 +132,12 @@ class FakeProjectConsoleService:
         ]
 
     def get_workitem(self, work_item_id: str) -> WorkItem | None:
+        return self._workitems.get(work_item_id)
+
+    def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:
+        return self._workitems.get(work_item_id)
+
+    def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
         return self._workitems.get(work_item_id)
 
 

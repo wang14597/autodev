@@ -9,6 +9,7 @@ function workitem(state: WorkItemSummary['state']): WorkItemSummary {
     repo: 'demo',
     type: null,
     state,
+    autonomy_enabled: false,
     created_at: null,
     updated_at: null,
   }

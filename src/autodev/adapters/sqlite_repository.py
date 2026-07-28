@@ -16,7 +16,14 @@ from autodev.domain.artifacts import (
     TriageArtifact,
     VerificationArtifact,
 )
-from autodev.domain.enums import GatePoint, TaskType, WorkflowState, WorkspaceMode
+from autodev.domain.enums import (
+    GatePoint,
+    RiskLevel,
+    TaskType,
+    TriageIntent,
+    WorkflowState,
+    WorkspaceMode,
+)
 from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.value_objects import (
     AutonomyDial,
@@ -101,6 +108,7 @@ def _to_dict(wi: WorkItem) -> dict:
         "type": wi.type.name if wi.type else None,
         "project_id": wi.project_id.value if wi.project_id else None,
         "base_branch": wi.base_branch,
+        "autonomy_enabled": wi.autonomy_enabled,
         "state": wi.state.name,
         "artifact_versions": {
             k: [_artifact_to_dict(a) for a in versions]
@@ -133,6 +141,7 @@ def _from_dict(d: dict) -> WorkItem:
         type=TaskType[d["type"]] if d["type"] else None,
         project_id=ProjectId(d["project_id"]) if d.get("project_id") else None,
         base_branch=d.get("base_branch"),
+        autonomy_enabled=d.get("autonomy_enabled", False),
         state=WorkflowState[d["state"]],
         artifact_versions={
             k: [_artifact_from_dict(a) for a in versions]
@@ -159,6 +168,9 @@ def _artifact_to_dict(a: object) -> dict:
             "level": a.level.name,
             "confidence": a.confidence,
             "workspace_mode": a.workspace_mode.name,
+            "risk": a.risk.name,
+            "signals": list(a.signals),
+            "intent": a.intent.name,
         }
     if isinstance(a, ContextArtifact):
         return {
@@ -190,8 +202,14 @@ def _artifact_to_dict(a: object) -> dict:
 def _artifact_from_dict(d: dict) -> object:
     t = d["__t"]
     if t == "TriageArtifact":
+        # 旧行无 risk/signals/intent 键 → 兜底 LOW/空/ACTIONABLE（向后兼容）。
         return TriageArtifact(
-            TaskType[d["level"]], d["confidence"], WorkspaceMode[d["workspace_mode"]]
+            TaskType[d["level"]],
+            d["confidence"],
+            WorkspaceMode[d["workspace_mode"]],
+            RiskLevel[d.get("risk", "LOW")],
+            tuple(d.get("signals", [])),
+            TriageIntent[d.get("intent", "ACTIONABLE")],
         )
     if t == "ContextArtifact":
         return ContextArtifact(

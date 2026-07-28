@@ -23,6 +23,7 @@ export interface WorkItemSummary {
   repo: string
   type: string | null
   state: WorkItemState
+  autonomy_enabled: boolean
   created_at: string | null
   updated_at: string | null
 }
@@ -35,10 +36,27 @@ export interface StageView {
   status: StageStatus
 }
 
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
+
+export type TriageIntent = 'ACTIONABLE' | 'CONSULTATION'
+
+export interface TriageView {
+  level: string
+  confidence: number
+  risk: RiskLevel
+  signals: string[]
+  intent: TriageIntent
+}
+
+export type GatePoint = 'CONTEXT_GATE' | 'REVIEW_GATE' | 'MERGE_GATE'
+
 export interface WorkItemDetail extends WorkItemSummary {
   stages: StageView[]
   context: { markdown: string; context_file: string } | null
   failure: { reason: string } | null
+  triage: TriageView | null
+  pending_gate: GatePoint | null
+  collect_only: boolean
 }
 
 export interface Project {

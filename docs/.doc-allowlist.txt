@@ -20,5 +20,32 @@ Transition
 # tests/fakes.py 的假适配器(FakeWorkspace 等)不在此白名单:
 # 它们是 tests/ 内的真实类, 已由 known_symbols(REPO/"tests") 识别为真符号。
 
-# Python 内置异常(非仓库自定义符号)
+# Python 内置(非仓库自定义符号)
 KeyError
+True
+
+# 前端 TS 类型/DTO(镜像后端 views.py, 定义在 frontend/src/api/types.ts, 非 src/autodev)
+TriageView
+WorkItemDetail
+WorkItemSummary
+NewWorkItemForm
+
+# 前端组件/第三方库(antd / React 等)名, 非 src/autodev 后端符号
+ConfigProvider
+Select
+TriageBadge
+LifelinePipeline
+StatusBadge
+WorkItemDetailPage
+BriefDocument
+
+# 历史/未来设计文档中的概念符号:
+# TriagePolicy —— 切片 2.1 的硬规则分诊,已被 LLM 分诊 TriagePort 取代(历史文档仍引用)
+# SandboxedRunner —— 执行沙箱(迭代 2.4)的未来概念,尚未落地
+# LlmTriageAdapter —— LLM 分诊子迭代 B 的适配器(设计文档先行引用,B 落地后成真符号)
+# PostContextDecision / LlmClient —— 设计讨论中的概念类型,实现用字面量/注入 httpx,未建同名类
+TriagePolicy
+SandboxedRunner
+LlmTriageAdapter
+PostContextDecision
+LlmClient

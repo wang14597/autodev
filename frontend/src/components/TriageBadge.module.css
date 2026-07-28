@@ -1,0 +1,76 @@
+.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.risk {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--muted);
+  color: var(--ink-soft);
+}
+
+.riskCn {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.risk[data-risk='LOW'] {
+  border-color: var(--done);
+  color: var(--done);
+}
+
+.risk[data-risk='MEDIUM'] {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.risk[data-risk='HIGH'] {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.confidence {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signal {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  background: var(--surface-2, rgba(0, 0, 0, 0.04));
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.intent {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--muted);
+  color: var(--ink-soft);
+}
+
+.intent[data-intent='CONSULTATION'] {
+  border-color: var(--signal);
+  color: var(--signal);
+}

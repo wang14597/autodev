@@ -7,7 +7,8 @@ export function useCreateWorkItem(projectId: string | undefined) {
   const navigate = useNavigate()
 
   return useMutation({
-    mutationFn: (goal: string) => createWorkItem(projectId as string, goal),
+    mutationFn: ({ goal, autonomyEnabled }: { goal: string; autonomyEnabled: boolean }) =>
+      createWorkItem(projectId as string, goal, autonomyEnabled),
     onSuccess: async ({ id }) => {
       await queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       navigate(`/projects/${projectId}/workitems/${id}`)

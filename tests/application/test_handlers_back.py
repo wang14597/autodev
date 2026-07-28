@@ -17,7 +17,7 @@ from autodev.domain.artifacts import (
 from autodev.domain.enums import FailureKind, GatePoint, TaskType
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.ids import WorkItemId
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
 from tests.fakes import (
@@ -26,6 +26,7 @@ from tests.fakes import (
     FakeDesign,
     FakeExecution,
     FakeReview,
+    FakeTriage,
     FakeVerification,
     FakeWorkspace,
 )
@@ -42,7 +43,7 @@ def _ctx(review_ok=True, verify_ok=True, dial=None):
         executor=FakeExecution(),
         verifier=FakeVerification(passed=verify_ok),
         delivery=FakeDelivery(),
-        triage_policy=TriagePolicy(),
+        triage=FakeTriage(),
         gate_policy=GatePolicy(),
     ), (dial or AutonomyDial.all_human())
 

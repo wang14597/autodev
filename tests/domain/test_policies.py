@@ -1,12 +1,11 @@
 from datetime import datetime
 
-from autodev.domain.enums import FailureKind, GatePoint, TaskType, WorkspaceMode
+from autodev.domain.enums import FailureKind, GatePoint, TaskType
 from autodev.domain.enums import WorkflowState as S
-from autodev.domain.policies import GatePolicy, RetryPolicy, TransitionRules, TriagePolicy
+from autodev.domain.policies import GatePolicy, RetryPolicy, TransitionRules
 from autodev.domain.value_objects import (
     AutonomyDial,
     RepoRef,
-    RepoStatus,
     Requirement,
     RetryLedger,
 )
@@ -27,14 +26,8 @@ def _wi(dial):
     return wi
 
 
-def test_triage_picks_workspace_mode():
-    req = Requirement("g", "repo-a", (), "r")
-    assert TriagePolicy().triage(req, RepoStatus(True, True)).workspace_mode is WorkspaceMode.REUSE
-    assert TriagePolicy().triage(req, RepoStatus(False, True)).workspace_mode is WorkspaceMode.FETCH
-    assert (
-        TriagePolicy().triage(req, RepoStatus(False, False)).workspace_mode is WorkspaceMode.CREATE
-    )
-    assert TriagePolicy().triage(req, RepoStatus(True, True)).level is TaskType.SMALL_CHANGE
+# 分诊的 workspace_mode 判定已抽为 workspace_mode_for（见 tests/domain/test_workspace_mode.py），
+# 分诊本身现为 TriagePort（见 tests/adapters/test_fake_triage.py）。此处不再测 TriagePolicy。
 
 
 def test_gate_policy_reads_dial():

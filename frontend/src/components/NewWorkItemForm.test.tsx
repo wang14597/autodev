@@ -50,7 +50,7 @@ describe('NewWorkItemForm', () => {
     await user.type(screen.getByLabelText('需求'), '加限流')
     await user.click(screen.getByRole('button', { name: '创建工作项' }))
 
-    expect(client.createWorkItem).toHaveBeenCalledWith('p-1', '加限流')
+    expect(client.createWorkItem).toHaveBeenCalledWith('p-1', '加限流', false)
   })
 
   it('surfaces a server-side error from the mutation', async () => {

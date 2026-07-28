@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from autodev.domain.enums import GatePoint, TaskType
+from autodev.domain.enums import GatePoint, RiskLevel, TaskType, TriageIntent
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,17 @@ class Requirement:
 class Verdict:
     passed: bool
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TriageSignal:
+    """分诊端口的结构化产出（不含 workspace_mode——那是机械判断，见 workspace_mode_for）。"""
+
+    level: TaskType
+    confidence: float
+    risk: RiskLevel
+    intent: TriageIntent
+    signals: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

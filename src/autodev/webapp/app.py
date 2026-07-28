@@ -42,11 +42,17 @@ class ConsoleService(Protocol):
 
     def set_project_branch(self, project_id: str, branch: str) -> str: ...
 
-    def create_workitem(self, project_id: str, goal: str) -> str: ...
+    def create_workitem(
+        self, project_id: str, goal: str, autonomy_enabled: bool = False
+    ) -> str: ...
 
     def list_workitems(self, project_id: str) -> list[WorkItem]: ...
 
     def get_workitem(self, work_item_id: str) -> WorkItem | None: ...
+
+    def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None: ...
+
+    def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None: ...
 
 
 class CreateProjectRequest(BaseModel):
@@ -57,10 +63,19 @@ class CreateProjectRequest(BaseModel):
 
 class CreateWorkItemRequest(BaseModel):
     goal: str
+    autonomy_enabled: bool = False
+
+
+class DecideRequest(BaseModel):
+    action: str  # "proceed" | "close" | "reject"
 
 
 class SetBranchRequest(BaseModel):
     branch: str
+
+
+class ApproveRequest(BaseModel):
+    approved: bool = True
 
 
 def _frontend_dist() -> Path | None:
@@ -130,7 +145,9 @@ def create_app(service: ConsoleService) -> FastAPI:
     @app.post("/api/projects/{project_id}/workitems")
     def create_workitem(project_id: str, payload: CreateWorkItemRequest) -> dict[str, str]:
         try:
-            work_item_id = service.create_workitem(project_id, payload.goal)
+            work_item_id = service.create_workitem(
+                project_id, payload.goal, payload.autonomy_enabled
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except LookupError as e:
@@ -140,6 +157,26 @@ def create_app(service: ConsoleService) -> FastAPI:
     @app.get("/api/workitems/{work_item_id}")
     def get_workitem(work_item_id: str) -> dict[str, object]:
         wi = service.get_workitem(work_item_id)
+        if wi is None:
+            raise HTTPException(status_code=404, detail="work item not found")
+        return view_detail(wi, _read_text)
+
+    @app.post("/api/workitems/{work_item_id}/approve")
+    def approve_workitem(work_item_id: str, payload: ApproveRequest) -> dict[str, object]:
+        try:
+            wi = service.approve_workitem(work_item_id, payload.approved)
+        except Exception as e:  # noqa: BLE001 领域不变式（非 WAIT_HUMAN 等）→ 400
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        if wi is None:
+            raise HTTPException(status_code=404, detail="work item not found")
+        return view_detail(wi, _read_text)
+
+    @app.post("/api/workitems/{work_item_id}/decide")
+    def decide_workitem(work_item_id: str, payload: DecideRequest) -> dict[str, object]:
+        try:
+            wi = service.decide_workitem(work_item_id, payload.action)
+        except Exception as e:  # noqa: BLE001 非法决策 / 非 WAIT_HUMAN → 400
+            raise HTTPException(status_code=400, detail=str(e)) from e
         if wi is None:
             raise HTTPException(status_code=404, detail="work item not found")
         return view_detail(wi, _read_text)

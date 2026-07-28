@@ -11,8 +11,17 @@ from autodev.domain.artifacts import (
     DesignArtifact,
     TriageArtifact,
 )
-from autodev.domain.enums import FailureKind, GatePoint, WorkflowState
+from autodev.domain.enums import (
+    FailureKind,
+    GatePoint,
+    RiskLevel,
+    TaskType,
+    TriageIntent,
+    WorkflowState,
+)
+from autodev.domain.errors import StageError
 from autodev.domain.outcome import StageOutcome
+from autodev.domain.policies import AutonomyPolicy, workspace_mode_for
 from autodev.domain.work_item import WorkItem
 
 
@@ -30,7 +39,23 @@ def handle_intake(work_item: WorkItem, ctx: StageContext, now: datetime) -> Stag
 
 def handle_triage(work_item: WorkItem, ctx: StageContext, now: datetime) -> StageOutcome:
     status = ctx.workspace.repo_status(work_item.repo_ref)
-    artifact = ctx.triage_policy.triage(work_item.requirement, status)
+    mode = workspace_mode_for(status)
+    try:
+        sig = ctx.triage.classify(work_item.requirement)
+        artifact = TriageArtifact(
+            sig.level, sig.confidence, mode, sig.risk, sig.signals, sig.intent
+        )
+    except StageError:
+        # 分诊基础设施失败（已在 ACL 边界翻译）→ 降级产物：低置信 + unavailable 信号，
+        # 使 AutonomyPolicy 规则 1 随后导向 CONTEXT_GATE 人审（失败→挂起，不 FAILED）。
+        artifact = TriageArtifact(
+            TaskType.SMALL_CHANGE,
+            0.0,
+            mode,
+            RiskLevel.HIGH,
+            ("triage-unavailable",),
+            TriageIntent.ACTIONABLE,
+        )
     work_item.type = artifact.level
     return StageOutcome.ok("triage", artifact)
 
@@ -45,6 +70,12 @@ def handle_context(work_item: WorkItem, ctx: StageContext, now: datetime) -> Sta
         base_branch=work_item.base_branch,
     )
     artifact = ctx.gatherer.gather(work_item.requirement, handle)
+    # 上下文后决策（AutonomyPolicy 只读 triage 产物，已入库；context 产物由引擎按 outcome 入库）。
+    decision = AutonomyPolicy().decide_after_context(work_item)
+    if decision == "suspend":
+        return StageOutcome.suspend(GatePoint.CONTEXT_GATE, "context", artifact)
+    if decision == "finish":
+        return StageOutcome.finish("context", artifact)
     return StageOutcome.ok("context", artifact)
 
 

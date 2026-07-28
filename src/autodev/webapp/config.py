@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -21,10 +22,11 @@ from autodev.adapters.context_claude import ClaudeContextAdapter
 from autodev.adapters.event_bus import InMemoryEventBus
 from autodev.adapters.project_repository import SqliteProjectRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
+from autodev.adapters.triage_llm import LlmTriageAdapter, _auth_headers_from_env
 from autodev.adapters.workspace_git import GitWorkspaceAdapter, GitWorkspaceConfig
 from autodev.application.context import StageContext
 from autodev.application.engine import Engine
-from autodev.domain.policies import GatePolicy, TriagePolicy
+from autodev.domain.policies import GatePolicy
 from autodev.webapp.app import create_app
 from autodev.webapp.projects import load_registry
 from autodev.webapp.service import ProjectConsoleService
@@ -55,6 +57,10 @@ def _load_repo_map(raw: str) -> dict[str, str]:
 
 
 def build_app_from_env() -> FastAPI:
+    return create_app(build_env_service())
+
+
+def build_env_service() -> ProjectConsoleService:
     home = Path(os.environ.get("AUTODEV_HOME", str(Path.home() / ".autodev"))).expanduser()
     home.mkdir(parents=True, exist_ok=True)
 
@@ -76,6 +82,15 @@ def build_app_from_env() -> FastAPI:
     gatherer = ClaudeContextAdapter(runner=lambda p, c: runner.run(p, c), autodev_home=home)
     stub = UnavailableStage()
 
+    # 分诊：真实 LLM 分诊(直连 Messages API,Opus 4.8)。缺 key/token 时不 fail-fast——
+    # 启动打警告,每次分诊调用将 StageError→降级为挂起人审(平台退化为人工分诊闸,不阻断)。
+    if not _auth_headers_from_env():
+        warnings.warn(
+            "未检测到 LLM 分诊凭据(ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN 等); "
+            "分诊将不可用并回退为挂起人审。",
+            stacklevel=2,
+        )
+    triage = LlmTriageAdapter.from_env()
     ctx = StageContext(
         workspace,
         gatherer,
@@ -84,11 +99,9 @@ def build_app_from_env() -> FastAPI:
         stub,
         stub,
         stub,
-        TriagePolicy(),
+        triage,
         GatePolicy(),
     )
     engine = Engine(repo, publisher, ctx, clock=lambda: datetime.now(UTC))
     executor = ThreadPoolExecutorAdapter()
-    service = ProjectConsoleService(project_repo, repo, workspace, engine, executor, registry)
-
-    return create_app(service)
+    return ProjectConsoleService(project_repo, repo, workspace, engine, executor, registry)
