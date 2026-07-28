@@ -8,12 +8,38 @@
 .caption {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   flex-wrap: wrap;
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--line);
   background: var(--surface-sunk);
+  cursor: pointer;
+  user-select: none;
+  list-style: none; /* 去掉 <summary> 默认三角(标准) */
+}
+.caption::-webkit-details-marker {
+  display: none; /* 去掉 <summary> 默认三角(WebKit) */
+}
+.caption:hover .captionTitle {
+  color: var(--ink);
+}
+
+/* 展开时才画分隔线;折叠时标题栏就是整块的下沿 */
+.wrapper[open] .caption {
+  border-bottom: 1px solid var(--line);
+}
+
+/* 折叠指示箭头:右指(折叠)→ 下指(展开) */
+.chevron {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--muted);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.15s ease;
+}
+.wrapper[open] .chevron {
+  transform: rotate(90deg);
 }
 
 .captionTitle {
@@ -23,6 +49,7 @@
 }
 
 .captionPath {
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--muted);

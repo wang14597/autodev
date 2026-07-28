@@ -22,13 +22,15 @@ export function BriefDocument({
   }, [markdown])
 
   return (
-    <section className={styles.wrapper} aria-label="上下文简报">
-      <header className={styles.caption}>
+    // 原生 <details>：点击标题栏折叠/展开(默认展开),无障碍、零额外状态。
+    <details className={styles.wrapper} aria-label="上下文简报" open>
+      <summary className={styles.caption}>
+        <span className={styles.chevron} aria-hidden="true" />
         <span className={styles.captionTitle}>上下文简报</span>
         <span className={styles.captionPath}>{contextFile}</span>
-      </header>
+      </summary>
       {/* sanitized via DOMPurify above */}
       <div className={styles.body} dangerouslySetInnerHTML={{ __html: html }} />
-    </section>
+    </details>
   )
 }
