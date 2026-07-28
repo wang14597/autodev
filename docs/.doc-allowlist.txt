@@ -37,6 +37,7 @@ TriageBadge
 LifelinePipeline
 StatusBadge
 WorkItemDetailPage
+BriefDocument
 
 # 历史/未来设计文档中的概念符号:
 # TriagePolicy —— 切片 2.1 的硬规则分诊,已被 LLM 分诊 TriagePort 取代(历史文档仍引用)
