@@ -57,7 +57,7 @@
 }
 
 .body {
-  max-width: var(--stage-measure);
+  /* 铺满面板宽度(不再限制在窄阅读宽度,避免右侧大片留白) */
   padding: var(--space-5);
   font-size: 0.95rem;
   line-height: 1.7;
