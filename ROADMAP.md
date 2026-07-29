@@ -130,7 +130,7 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 
 ## 切片 2：真实 ACL + E2E 冒烟
 
-**◐ 进行中**（Workspace / Context 两个真实适配器已落地，其余 5 个待实现）
+**◐ 进行中**（Workspace/Context/Triage/Design 四个真实适配器已落地，其余待实现）
 
 **目标**：将 7 个假适配器替换为真实实现，跑通完整的端到端冒烟测试。
 
@@ -142,7 +142,7 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 |--------|------|---------|---------|
 | **WorkspacePort** | git mirror 缓存 + worktree/分支准备与清理 | ✅ 真实已实现（`GitWorkspaceAdapter`）**且已接入组合根**（`config.py`），有界驱动的 TRIAGE/CONTEXT 已真实使用 | 本地 git + bare mirror；后续补 push + GitLab 远程 |
 | **ContextPort** | 为 WorkItem 收集代码/文档上下文 | ✅ 真实已实现（`ClaudeContextAdapter` + `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出 Markdown 上下文文档，持久化到 `~/.autodev` |
-| **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
+| **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | ✅ 真实已实现（`ClaudeDesignAdapter`，复用 `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出方案 Markdown 文档，持久化到 `~/.autodev` |
 | **ReviewPort** | 对 DesignProposal 做代码评审 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
 | **ExecutionPort** | 按 DesignProposal 编码实现 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`，需执行沙箱） |
 | **VerificationPort** | 跑测试/lint/构建得出 Verdict | ⬜ 假 | 真实（测试框架 + lint + 构建工具集成） |

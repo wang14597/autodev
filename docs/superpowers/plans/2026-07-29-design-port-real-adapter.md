@@ -84,7 +84,7 @@ class DesignArtifact:
 
 - [ ] **Step 5: 改所有其它构造点**
 
-`src/autodev/adapters/demo.py` DemoDesign（改为写一份真实演示方案文件，供演示 E2E 的方案面板可读；`Path` 已在该模块 import，否则补 `from pathlib import Path`）：
+`src/autodev/adapters/demo.py` DemoDesign（改为写一份真实演示方案文件，供演示 E2E 的方案面板可读；标准库 Path 已在该模块 import，否则补 `from pathlib import Path`）：
 
 ```python
 class DemoDesign:
