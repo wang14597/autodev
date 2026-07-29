@@ -36,7 +36,6 @@ def test_propose_persists_design_doc(tmp_path):
     assert "方案概述" in Path(art.design_file).read_text()
     # prompt 里带了 context 文件路径（让 CLI 自己读），cwd 是 worktree
     assert captured["cwd"] == tmp_path / "ws" / "wiabc"
-    assert str(_context(tmp_path).context_file).rsplit("/", 1)[-1] not in captured["prompt"] or True
     assert "context" in captured["prompt"].lower() or "上下文" in captured["prompt"]
 
 

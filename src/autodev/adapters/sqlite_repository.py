@@ -218,6 +218,7 @@ def _artifact_from_dict(d: dict) -> object:
             d["context_file"],
         )
     if t == "DesignArtifact":
+        # 无旧行兼容负担：DESIGN 此前为桩，生产从未持久化过 DesignArtifact
         return DesignArtifact(d["design_file"])
     if t == "ReviewArtifact":
         return ReviewArtifact(d["approved"], tuple(d["comments"]))

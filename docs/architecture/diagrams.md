@@ -306,8 +306,7 @@ classDiagram
         +str context_file
     }
     class DesignArtifact {
-        +str change_summary
-        +tuple target_files
+        +str design_file
     }
     class ReviewArtifact {
         +bool approved
