@@ -297,3 +297,16 @@ def test_legacy_triage_dict_defaults_intent_actionable():
         }
     )
     assert art.intent is TriageIntent.ACTIONABLE
+
+
+# --- DesignArtifact 简化为指针 ---
+
+
+def test_design_artifact_roundtrip_pointer(tmp_path):
+    from autodev.adapters.sqlite_repository import _artifact_from_dict, _artifact_to_dict
+    from autodev.domain.artifacts import DesignArtifact
+
+    art = DesignArtifact(design_file="/home/.autodev/workitems/wi1/design-abc.md")
+    back = _artifact_from_dict(_artifact_to_dict(art))
+    assert isinstance(back, DesignArtifact)
+    assert back.design_file == "/home/.autodev/workitems/wi1/design-abc.md"

@@ -30,8 +30,8 @@ def test_starts_in_intake_and_runnable():
 
 def test_artifacts_append_versions_without_mutating_prior():
     wi = _wi()
-    a1 = DesignArtifact("x", ())
-    a2 = DesignArtifact("y", ())
+    a1 = DesignArtifact(design_file="/f/x.md")
+    a2 = DesignArtifact(design_file="/f/y.md")
     wi.add_artifact("design", a1)
     wi.add_artifact("design", a2)
     assert wi.current_artifact("design") is a2

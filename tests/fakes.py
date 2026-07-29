@@ -73,7 +73,7 @@ class FakeContext:
 
 class FakeDesign:
     def propose(self, requirement: Requirement, context: ContextArtifact) -> DesignArtifact:
-        return DesignArtifact(f"do: {requirement.goal}", ("app.py",))
+        return DesignArtifact(design_file=f"/fake/design/{requirement.goal[:8]}.md")
 
 
 class FakeReview:
