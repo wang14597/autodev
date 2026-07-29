@@ -1,9 +1,9 @@
 # src/autodev/webapp/service.py
-"""WorkItem 控制台应用服务：创建 + 有界自动驱动(止于 DESIGN) + 查询。
+"""WorkItem 控制台应用服务：创建 + 有界自动驱动(止于 REVIEW) + 查询。
 
-有界驱动只允许引擎跑 INTAKE/TRIAGE/CONTEXT 三个已实现阶段；一旦 WorkItem 转移到
-DESIGN(或任何未实现阶段) 或进入终态/挂起态，驱动循环立即停止，绝不会调用到
-DESIGN 及之后的桩端口(见 stubs.py)。
+有界驱动只允许引擎跑 INTAKE/TRIAGE/CONTEXT/DESIGN 四个已实现阶段；一旦 WorkItem 转移到
+REVIEW(或任何未实现阶段) 或进入终态/挂起态，驱动循环立即停止，绝不会调用到
+REVIEW 及之后的桩端口(见 stubs.py)。
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from autodev.domain.work_item import WorkItem
 from autodev.webapp.projects import ProjectRegistry
 
 # 有界驱动允许自动跑的阶段集合：生产默认仅到 CONTEXT 为止，绝不进入 DESIGN 及之后。
-RUN: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
+RUN: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT, S.DESIGN})
 # 全生命周期驱动集合：仅供演示组合根（下游为确定性演示适配器，不触达抛错桩）。
 FULL_DRIVE: frozenset[S] = frozenset(
     {
@@ -65,7 +65,7 @@ def _bounded_drive(
 ) -> None:
     """有界自动驱动循环：只在 `run_states` 内推进，越界即停。
 
-    生产默认 `run_states=RUN`（止于 CONTEXT，绝不越界调用 DESIGN 及之后的桩端口）；
+    生产默认 `run_states=RUN`（止于 REVIEW，绝不越界调用 REVIEW 及之后的桩端口）；
     演示组合根传 `FULL_DRIVE` 跑完全生命周期（下游为确定性演示适配器）。抽成自由函数
     供 WorkItemConsoleService/ProjectConsoleService 共用。
     """
