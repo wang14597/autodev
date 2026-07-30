@@ -6,7 +6,7 @@ from autodev.domain.outcome import StageOutcome
 
 
 def test_stage_outcome_variants():
-    a = DesignArtifact("fix typo", ("a.py",))
+    a = DesignArtifact(design_file="/f/d.md")
     ok = StageOutcome.ok("design", a)
     assert ok.kind == "success" and ok.artifact_key == "design" and ok.artifact is a
     sus = StageOutcome.suspend(GatePoint.REVIEW_GATE, "review", a)

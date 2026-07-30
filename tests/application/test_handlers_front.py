@@ -101,4 +101,4 @@ def test_design_reads_context():
     wi.add_artifact("context", ContextArtifact("/tmp/x", "autodev/abc", "/tmp/x/context.md"))
     out = handle_design(wi, _ctx(), NOW)
     assert out.kind == "success" and out.artifact_key == "design"
-    assert "fix typo" in out.artifact.change_summary
+    assert out.artifact.design_file  # 非空指针

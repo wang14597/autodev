@@ -29,8 +29,7 @@ class ContextArtifact:
 
 @dataclass(frozen=True)
 class DesignArtifact:
-    change_summary: str
-    target_files: tuple[str, ...]
+    design_file: str
 
 
 @dataclass(frozen=True)

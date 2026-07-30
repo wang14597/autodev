@@ -23,6 +23,12 @@ markers = ["live: 需真实 claude/网关, 默认不跑"]
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.format]
+# ruff 0.16 起会格式化 Markdown 里的 Python 代码块。docs/ 下的 spec/plan 片段是
+# 示意性伪代码(刻意对齐注释、省略实现体),不是可运行源码,交给文档一致性 CI 管;
+# 这里把 Markdown 排除,保证格式化只作用于真实 Python 源码,且不随 ruff 版本漂移。
+exclude = ["**/*.md"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 

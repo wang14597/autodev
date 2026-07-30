@@ -126,8 +126,17 @@ export function WorkItemDetailPage() {
 
       {detail.context && (
         <BriefDocument
+          title="上下文简报"
           markdown={detail.context.markdown}
-          contextFile={detail.context.context_file}
+          path={detail.context.context_file}
+        />
+      )}
+
+      {detail.design && (
+        <BriefDocument
+          title="方案"
+          markdown={detail.design.markdown}
+          path={detail.design.design_file}
         />
       )}
 

@@ -53,6 +53,7 @@ export type GatePoint = 'CONTEXT_GATE' | 'REVIEW_GATE' | 'MERGE_GATE'
 export interface WorkItemDetail extends WorkItemSummary {
   stages: StageView[]
   context: { markdown: string; context_file: string } | null
+  design: { markdown: string; design_file: string } | null
   failure: { reason: string } | null
   triage: TriageView | null
   pending_gate: GatePoint | null

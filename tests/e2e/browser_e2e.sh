@@ -3,6 +3,8 @@
 #   ① 低风险工作项自动流转到 DONE(无人审)
 #   ② 高风险工作项挂起 WAIT_HUMAN 且分诊徽章 risk=HIGH
 #   ③ 人审"批准继续"×2(REVIEW→MERGE 纵深防御)后到 DONE
+#   ④ 自主开启的落地类工作项驱动经过 DESIGN 阶段，详情页展示「方案」面板
+#     (DesignPort 真实/演示适配器产出的方案 Markdown，见 场景③ 断言追加)
 #
 # 被测系统 = build_demo_app(内存仓储 + 确定性演示适配器 + 真实 Triage/Gate + 放行 dial)。
 # 零外部依赖：无网络、无 GitLab、无 live claude、无 token 消耗。
@@ -93,6 +95,9 @@ agent-browser find text "创建工作项" click >/dev/null
 agent-browser wait --text "分诊" >/dev/null
 assert_has '[data-testid="triage-risk"]' "LOW" "场景③：分诊 risk=LOW"
 assert_count '[data-testid="approval-panel"]' "0" "场景③：低风险落地自动流转→DONE"
+# 自主开启 + 落地类 + 低风险 → FULL_DRIVE 已连带跑过 DESIGN；详情页应展示「方案」面板(DesignPort)。
+assert_count 'details[aria-label="方案"]' "1" "场景③：自主落地驱动经过 DESIGN → 展示「方案」面板"
+assert_has 'details[aria-label="方案"]' "实现方案" "场景③：「方案」面板含 DesignPort 产出的方案文档内容"
 
 # 场景 ④ 开自主 + 高风险落地 → 靠"风险 HIGH"在 REVIEW 门挡下人审
 back_to_project

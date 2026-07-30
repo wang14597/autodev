@@ -207,3 +207,28 @@ def test_view_detail_projects_triage_when_present() -> None:
 def test_view_detail_triage_none_when_absent() -> None:
     wi = _work_item(S.INTAKE)
     assert view_detail(wi, lambda _p: "")["triage"] is None
+
+
+# --- Task 4：view_detail 暴露 design 字段（镜像 context）---
+
+
+def test_view_detail_projects_design_brief():
+    from autodev.domain.artifacts import DesignArtifact
+
+    wi = _work_item(S.DESIGN)
+    wi.add_artifact("design", DesignArtifact(design_file="/x/design.md"))
+
+    detail = view_detail(wi, read_text=lambda p: "## 方案概述\n改 app.py\n")
+
+    assert detail["design"] == {
+        "markdown": "## 方案概述\n改 app.py\n",
+        "design_file": "/x/design.md",
+    }
+
+
+def test_view_detail_design_none_when_absent():
+    wi = _work_item(S.CONTEXT)
+
+    detail = view_detail(wi, read_text=lambda p: "")
+
+    assert detail["design"] is None

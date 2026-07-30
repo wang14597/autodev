@@ -13,7 +13,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 ▌┐
 ▌│ 切片 4：信任梯度自动合并（⇒ 无人值守）        ▢ 未开始
 ▌├ 切片 3：中/复杂特性重流程 + 强上下文          ▢ 未开始
-▌├ 切片 2：真实 ACL + E2E 冒烟                  ◐ 进行中（Workspace/Context 已落地）
+▌├ 切片 2：真实 ACL + E2E 冒烟                  ◐ 进行中（Workspace/Context/Triage/Design 已落地）
 ▌└ 切片 1：行走骨架                             ✓ 已完成
 │
 ├─→ 控制台 + Project 一等概念（Web 平台外观）    ✓ 已交付
@@ -24,7 +24,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 
 > **文档-代码对齐说明（2026-07-25）**：本 ROADMAP 曾定格在 0.1.1 项目基线。此后代码实质推进了两块：
 > ①「控制台 + Project 一等概念」里程碑已交付（见下节）；②切片 2 已启动，7 个假适配器中
-> `WorkspacePort`、`ContextPort` 两个真实 ACL 适配器已实现。以 [CHANGELOG](CHANGELOG.md) 的
+> `WorkspacePort`、`ContextPort`、`TriagePort`、`DesignPort` 四个真实 ACL 适配器已实现。以 [CHANGELOG](CHANGELOG.md) 的
 > `[Unreleased]` 段与本文为当前权威基准。
 
 ---
@@ -130,7 +130,7 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 
 ## 切片 2：真实 ACL + E2E 冒烟
 
-**◐ 进行中**（Workspace / Context 两个真实适配器已落地，其余 5 个待实现）
+**◐ 进行中**（Workspace/Context/Triage/Design 四个真实适配器已落地，其余待实现）
 
 **目标**：将 7 个假适配器替换为真实实现，跑通完整的端到端冒烟测试。
 
@@ -142,7 +142,7 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 |--------|------|---------|---------|
 | **WorkspacePort** | git mirror 缓存 + worktree/分支准备与清理 | ✅ 真实已实现（`GitWorkspaceAdapter`）**且已接入组合根**（`config.py`），有界驱动的 TRIAGE/CONTEXT 已真实使用 | 本地 git + bare mirror；后续补 push + GitLab 远程 |
 | **ContextPort** | 为 WorkItem 收集代码/文档上下文 | ✅ 真实已实现（`ClaudeContextAdapter` + `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出 Markdown 上下文文档，持久化到 `~/.autodev` |
-| **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
+| **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | ✅ 真实已实现（`ClaudeDesignAdapter`，复用 `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出方案 Markdown 文档，持久化到 `~/.autodev` |
 | **ReviewPort** | 对 DesignProposal 做代码评审 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
 | **ExecutionPort** | 按 DesignProposal 编码实现 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`，需执行沙箱） |
 | **VerificationPort** | 跑测试/lint/构建得出 Verdict | ⬜ 假 | 真实（测试框架 + lint + 构建工具集成） |
@@ -151,8 +151,8 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 **核心工作**：
 - ✅ 实现 Workspace ACL：bare mirror 管理、worktree 生命周期（`GitWorkspaceAdapter`，REUSE/FETCH/CREATE 三模式）
 - ✅ Claude Code headless runner 基座（`ClaudeCodeRunner`：子进程调 `claude` CLI + 超时/重试 + transient/fatal/logic 失败分类）
-- ◐ 复用该基座实现 Design / Review / Execution 三个真实适配器
-- ⬜ 把真实 `WorkspacePort` 接入运行主循环，让 DESIGN 及之后阶段真实驱动
+- ✅ 复用该基座实现 DesignPort 真实适配器（`ClaudeDesignAdapter`）；◐ Review / Execution 两个真实适配器待实现
+- ✅ 把真实 `WorkspacePort`/`ContextPort`/`TriagePort`/`DesignPort` 接入运行主循环，让 TRIAGE/CONTEXT/DESIGN 已真实驱动；⬜ REVIEW 及之后阶段仍待接入
 - ⬜ 集成验证工具链：pytest / ruff / mypy / 构建脚本
 - ⬜ 集成 GitLab API：MR 创建、合并权限、pipeline 状态查询
 - ⏸ 集成 Feishu/Lark API：通知卡片、审批流、事件回调 —— **暂不纳入当前规划**（后续再议）
@@ -361,9 +361,10 @@ AutonomyDial = {
            ╔═══════════════════════════════════════╗
            ║  🚀 切片 2：真实 ACL - ◐ 进行中       ║
            ║  目标：2-3 周                          ║
-           ║  - Workspace/Context ✓ 已落地         ║
-           ║  - Design/Review/Execution/Verify/    ║
-           ║    Delivery 5 个 → 真实实现            ║
+           ║  - Workspace/Context/Triage/Design    ║
+           ║    ✓ 已落地                            ║
+           ║  - Review/Execution/Verify/Delivery   ║
+           ║    4 个 → 真实实现                     ║
            ║  - E2E 冒烟测试 + Observability 基础   ║
            ╚═══════════════════════════════════════╝
                       ↓

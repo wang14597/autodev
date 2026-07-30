@@ -13,9 +13,9 @@ from autodev.domain.enums import FailureKind, GatePoint
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import StageError
 from autodev.domain.policies import GatePolicy
-from autodev.webapp.service import SyncExecutor, WorkItemConsoleService
+from autodev.webapp.service import RUN, SyncExecutor, WorkItemConsoleService, _bounded_drive
 from autodev.webapp.stubs import UnavailableStage
-from tests.fakes import FakeContext, FakeTriage, FakeWorkspace
+from tests.fakes import FakeContext, FakeDesign, FakeTriage, FakeWorkspace
 
 NOW = datetime(2026, 7, 22, 12, 0, 0)
 
@@ -151,3 +151,50 @@ def test_list_get():
 
     assert svc.get(id_a) is not None
     assert svc.get(id_a).requirement.goal == "需求 A"  # type: ignore[union-attr]
+
+
+def test_drive_reaches_review_and_stops_without_calling_review_stub():
+    from autodev.domain.enums import TriageIntent
+    from autodev.domain.ids import WorkItemId
+    from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
+    from autodev.domain.work_item import WorkItem
+
+    repo = InMemoryWorkItemRepository()
+    stage = UnavailableStage()
+    ctx = StageContext(
+        FakeWorkspace(),
+        FakeContext(),
+        FakeDesign(),  # designer 真实产出
+        stage,  # reviewer 桩：一旦被调用即 FATAL
+        stage,
+        stage,
+        stage,
+        FakeTriage(intent=TriageIntent.ACTIONABLE),
+        GatePolicy(),
+    )
+    engine = Engine(repo, InMemoryEventBus(), ctx, clock=lambda: NOW)
+
+    wid = WorkItemId("wireview1")
+    # 注：goal 用完整英文短句 + 非空 acceptance_hints——FakeTriage 的启发式对短/未识别
+    # 目标会扣置信分（<0.5 阈值触发 AutonomyPolicy 规则 1 强制人审，与 autonomy_enabled
+    # 无关）；brief 示例的短中文目标 "加限流" 实测置信 0.45，会在 CONTEXT_GATE 挂起，
+    # 无法验证本用例要证明的「自动跑完 DESIGN」路径，故在此调整措辞以达到置信阈值。
+    wi = WorkItem.create(
+        wid,
+        RepoRef("demo"),
+        Requirement(
+            "add rate limiting for the api gateway",
+            "demo",
+            ("no regression in throughput",),
+            "add rate limiting for the api gateway to protect it from abuse",
+        ),
+        AutonomyDial.all_human(),
+        NOW,
+        autonomy_enabled=True,
+    )
+    repo.save(wi)
+    _bounded_drive(repo, engine, wid, RUN)
+
+    got = repo.get(wid)
+    assert got.state == S.REVIEW  # 跑完 DESIGN，停在 REVIEW（∉RUN）
+    assert "design" in got.artifacts

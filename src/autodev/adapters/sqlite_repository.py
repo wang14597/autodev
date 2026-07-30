@@ -180,7 +180,7 @@ def _artifact_to_dict(a: object) -> dict:
             "context_file": a.context_file,
         }
     if isinstance(a, DesignArtifact):
-        return {"__t": t, "change_summary": a.change_summary, "target_files": list(a.target_files)}
+        return {"__t": t, "design_file": a.design_file}
     if isinstance(a, ReviewArtifact):
         return {"__t": t, "approved": a.approved, "comments": list(a.comments)}
     if isinstance(a, ImplArtifact):
@@ -218,7 +218,8 @@ def _artifact_from_dict(d: dict) -> object:
             d["context_file"],
         )
     if t == "DesignArtifact":
-        return DesignArtifact(d["change_summary"], tuple(d["target_files"]))
+        # 无旧行兼容负担：DESIGN 此前为桩，生产从未持久化过 DesignArtifact
+        return DesignArtifact(d["design_file"])
     if t == "ReviewArtifact":
         return ReviewArtifact(d["approved"], tuple(d["comments"]))
     if t == "ImplArtifact":

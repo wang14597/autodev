@@ -1,5 +1,5 @@
 # src/autodev/webapp/config.py
-"""组合根：从环境变量装配真实适配器(F1 workspace/F3 context)+ 桩(DESIGN 及之后)。
+"""组合根：从环境变量装配真实适配器(F1 workspace/F3 context/F4 design)+ 桩(REVIEW 及之后)。
 
 只在这里把 driving adapter(FastAPI) 与领域引擎/真实端口接起来；不引入任何新的领域
 概念，只是接线。
@@ -19,6 +19,7 @@ from fastapi import FastAPI
 
 from autodev.adapters.claude_runner import ClaudeCodeRunner
 from autodev.adapters.context_claude import ClaudeContextAdapter
+from autodev.adapters.design_claude import ClaudeDesignAdapter
 from autodev.adapters.event_bus import InMemoryEventBus
 from autodev.adapters.project_repository import SqliteProjectRepository
 from autodev.adapters.sqlite_repository import SqliteWorkItemRepository
@@ -80,6 +81,7 @@ def build_env_service() -> ProjectConsoleService:
     )
     runner = ClaudeCodeRunner()
     gatherer = ClaudeContextAdapter(runner=lambda p, c: runner.run(p, c), autodev_home=home)
+    designer = ClaudeDesignAdapter(runner=lambda p, c: runner.run(p, c), autodev_home=home)
     stub = UnavailableStage()
 
     # 分诊：真实 LLM 分诊(直连 Messages API,Opus 4.8)。缺 key/token 时不 fail-fast——
@@ -94,7 +96,7 @@ def build_env_service() -> ProjectConsoleService:
     ctx = StageContext(
         workspace,
         gatherer,
-        stub,
+        designer,
         stub,
         stub,
         stub,
