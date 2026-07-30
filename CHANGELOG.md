@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Layer 3 AI docs advisor changed from a GitHub Actions workflow (`pull_request`-triggered, PR-comment output, required an `ANTHROPIC_API_KEY` repo secret) to a local `pre-push` git hook, because the Anthropic key used by this project only works on the internal network and cannot be reached from GitHub's cloud runners. `.github/workflows/docs-advisor.yml` has been removed accordingly.
 - Local doc advisor simplified to use Claude Code's agentic read-only investigation (`--permission-mode plan --bare`) instead of pre-computing a git diff; the script no longer gathers and truncates the diff in-process but instead delegates autonomous investigation of git changes and doc reading to Claude Code.
 
+### Fixed
+- **CI 恢复为可绿(自 2026-07-16 起每次运行都失败的三处基础设施债)**：`quality` 与 `mermaid` 两个 job 一直红,且因失败发生在 `ruff format` 步骤而掩盖了下游步骤的问题,逐层暴露后一并修掉。
+  - **`quality` / 格式检查**：`dev` 附加组声明 `ruff>=0.6` 无上界,本地 venv 停在 0.15.21 而 CI 每次拉最新(今解析到 0.16.0)。ruff 0.16 起会格式化 Markdown 内的 Python 代码块,于是 `ruff format --check .` 从 92 个文件扩到 127 个,判定 9 个 `docs/superpowers/**` 的 spec/plan 需重排。这些片段是示意性伪代码(刻意对齐注释、省略实现体),其一致性由文档一致性 CI 负责,故在 `pyproject.toml` 增 `[tool.ruff.format] exclude = ["**/*.md"]`,让格式化只作用于真实 Python 源码且不随 ruff 版本漂移。
+  - **`quality` / 测试**：安装步骤只装 `.[dev]`,而 `tests/webapp/**` 与 `tests/adapters/test_triage_llm.py` 在模块级 `import fastapi`/`httpx`,缺依赖会在收集阶段直接报错(非 skip),3 个模块 `ModuleNotFoundError` → `pytest` 退出码 2。改为 `.[dev,web]`。
+  - **`mermaid`**：`mmdc` 经 puppeteer 起无头 Chromium,GitHub runner 镜像(Ubuntu 23.10+)限制非特权用户命名空间,默认沙箱起不来(`No usable sandbox!`),5 个图全部渲染失败。CI 容器本身即隔离边界,故传 puppeteer 配置显式关掉 Chromium 内层沙箱(`--no-sandbox`)。
+- **控制台服务读文件失败退化为空响应(运行时事故,非代码缺陷)**：长期在后台跑的 uvicorn 进程被 reparent 到 launchd 后,失去 macOS TCC 对 `~/Downloads` 下文件的读权限;`stat()` 仍成功(响应头照常带 `content-length`)而 `open()` 抛 `EPERM`,于是 `GET /` 回 200 但**响应体 0 字节**(浏览器白屏),同时惰性 import 失败使 `/openapi.json` 报 500。无代码可修——需从有权限的父进程重启;重启后 `/` 与 `frontend/dist/index.html` 字节一致、`/openapi.json` 恢复 200。
+
 ### Planned (Slice 2 / 后续)
 - Slice 2: replace the 7 fakes-only ports (Workspace, Context, Design, Review, Execution, Verification, Delivery) with real ACL adapters + end-to-end smoke test
 - GitLab MR auto-merge guards (Slice 4: trust-gradient auto-merge)
