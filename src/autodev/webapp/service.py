@@ -24,7 +24,7 @@ from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement, Wor
 from autodev.domain.work_item import WorkItem
 from autodev.webapp.projects import ProjectRegistry
 
-# 有界驱动允许自动跑的阶段集合：生产默认仅到 CONTEXT 为止，绝不进入 DESIGN 及之后。
+# 有界驱动允许自动跑的阶段集合：生产默认仅到 DESIGN 为止，绝不进入 REVIEW 及之后。
 RUN: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT, S.DESIGN})
 # 全生命周期驱动集合：仅供演示组合根（下游为确定性演示适配器，不触达抛错桩）。
 FULL_DRIVE: frozenset[S] = frozenset(
@@ -164,7 +164,7 @@ class ProjectConsoleService:
         self._id_gen_project = id_gen_project
         self._id_gen_work = id_gen_work
         # dial_factory：按运行时 repo 名构造 AutonomyDial（生产默认全人审；演示传放行工厂）。
-        # run_states：驱动允许推进的阶段集合（生产默认 RUN 止于 CONTEXT；演示传 FULL_DRIVE）。
+        # run_states：驱动允许推进的阶段集合（生产默认 RUN 止于 REVIEW；演示传 FULL_DRIVE）。
         self._dial_factory = dial_factory
         self._run_states = run_states
 
