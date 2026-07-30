@@ -163,7 +163,7 @@ sequenceDiagram
         Engine->>Handlers: advance(CONTEXT)
         Handlers->>Ports: provision() + gather()
         Ports-->>Handlers: WorkspaceHandle, ContextArtifact
-        Note over Handlers: AutonomyPolicy 上下文后决策(本例 autonomy_enabled=开 且意图=落地 → proceed)<br/>关→suspend(CONTEXT_GATE);开+咨询→finish(DONE 仅收集)
+        Note over Handlers: AutonomyPolicy 上下文后决策(本例 autonomy_enabled=开 且意图=落地 → proceed)<br/>关→suspend(CONTEXT_GATE)；开+咨询→finish(DONE 仅收集)
         Handlers-->>Engine: StageOutcome.ok(context)
         Engine->>Store: save(state=DESIGN)
 
