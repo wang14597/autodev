@@ -50,9 +50,11 @@ class FakeProjectConsoleService:
         self,
         projects: list[Project] | None = None,
         workitems: list[WorkItem] | None = None,
+        advance_raises: bool = False,
     ) -> None:
         self._projects: dict[str, Project] = {p.id.value: p for p in (projects or [])}
         self._workitems: dict[str, WorkItem] = {wi.id.value: wi for wi in (workitems or [])}
+        self.advance_raises = advance_raises
 
     def _count(self, project_id: str) -> int:
         return sum(
@@ -139,6 +141,19 @@ class FakeProjectConsoleService:
 
     def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
         return self._workitems.get(work_item_id)
+
+    def advance_workitem(self, work_item_id: str) -> WorkItem | None:
+        if self.advance_raises and work_item_id in self._workitems:
+            from autodev.domain.errors import InvariantError
+
+            raise InvariantError("cannot advance work item stopped by TERMINAL")
+        return self._workitems.get(work_item_id)
+
+    @property
+    def implemented_stages(self) -> frozenset[S]:
+        from autodev.webapp.drive import IMPLEMENTED_STAGES
+
+        return IMPLEMENTED_STAGES
 
 
 def _client(service: FakeProjectConsoleService) -> TestClient:
@@ -449,3 +464,28 @@ class TestSpaHosting:
             assert resp.status_code == 200, path
             assert resp.text == "<html>INDEX</html>", path
             assert "TOP SECRET" not in resp.text, path
+
+
+def test_advance_endpoint_returns_detail() -> None:
+    project = _project()
+    wi = _work_item(project, state=S.DESIGN)
+    client = _client(FakeProjectConsoleService([project], [wi]))
+
+    response = client.post(f"/api/workitems/{wi.id.value}/advance")
+
+    assert response.status_code == 200
+    assert response.json()["next_action"] in {"advance", "decide", "blocked", "none"}
+
+
+def test_advance_endpoint_404_when_missing() -> None:
+    client = _client(FakeProjectConsoleService())
+    assert client.post("/api/workitems/nope/advance").status_code == 404
+
+
+def test_advance_endpoint_409_when_illegal_state() -> None:
+    """非法态（终态 / 待门禁 / 未建设）→ 409，而非 400/500，也绝不静默 200。"""
+    project = _project()
+    wi = _work_item(project, state=S.DONE)
+    client = _client(FakeProjectConsoleService([project], [wi], advance_raises=True))
+
+    assert client.post(f"/api/workitems/{wi.id.value}/advance").status_code == 409
