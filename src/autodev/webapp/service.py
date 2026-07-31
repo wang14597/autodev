@@ -25,7 +25,7 @@ from autodev.domain.work_item import WorkItem
 from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, auto_drive, ensure_advanceable, step
 from autodev.webapp.projects import ProjectRegistry
 
-_Driver = Callable[[WorkItemRepository, Engine, WorkItemId, "frozenset[S]"], "DriveStop | None"]
+_Driver = Callable[[WorkItemRepository, Engine, WorkItemId, frozenset[S]], DriveStop | None]
 
 
 def _default_clock() -> datetime:
@@ -138,7 +138,7 @@ class ProjectConsoleService:
         """供路由投影使用——视图层据此标注「待建设」并计算 next_action。"""
         return self._implemented_stages
 
-    def _drive(self, runner: _Driver, work_item_id: WorkItemId) -> None:
+    def _run_driver(self, runner: _Driver, work_item_id: WorkItemId) -> None:
         # Executor.submit 要求 Callable[[], None]；auto_drive/step 返回 DriveStop | None，
         # 这里丢弃返回值以匹配签名（提交时是"fire and forget"，前端靠轮询取新状态）。
         runner(self._work_repo, self._engine, work_item_id, self._implemented_stages)
@@ -281,7 +281,7 @@ class ProjectConsoleService:
             autonomy_enabled=autonomy_enabled,
         )
         self._work_repo.save(work_item)
-        self._executor.submit(lambda: self._drive(auto_drive, work_item_id))
+        self._executor.submit(lambda: self._run_driver(auto_drive, work_item_id))
         return work_item_id.value
 
     def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
@@ -300,7 +300,7 @@ class ProjectConsoleService:
             # 免得为同一个意图点两下（先点「继续」再点「推进」）。自动挡照旧连续跑。
             wi = self._work_repo.get(wid)
             runner = auto_drive if wi.autonomy_enabled else step
-            self._executor.submit(lambda: self._drive(runner, wid))
+            self._executor.submit(lambda: self._run_driver(runner, wid))
         return self.get_workitem(work_item_id)
 
     def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:
@@ -321,7 +321,7 @@ class ProjectConsoleService:
             return None
         # 准入规则只在 drive.py 定义一处；这里同步校验以立刻回 409，step 在后台再校验一次。
         ensure_advanceable(wi, self._implemented_stages)
-        self._executor.submit(lambda: self._drive(step, wid))
+        self._executor.submit(lambda: self._run_driver(step, wid))
         return self.get_workitem(work_item_id)
 
     def list_workitems(self, project_id: str) -> list[WorkItem]:

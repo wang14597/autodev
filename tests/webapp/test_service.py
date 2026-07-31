@@ -201,15 +201,25 @@ def test_drive_reaches_review_and_stops_without_calling_review_stub():
     assert "design" in got.artifacts
 
 
-def _project_service_with_fakes():
-    """返回 (ProjectConsoleService, work_repo)，执行器用 SyncExecutor 便于同步断言。"""
+def _project_service_with_fakes(
+    *, full_fakes: bool = False, implemented_stages: frozenset[S] | None = None
+):
+    """返回 (ProjectConsoleService, work_repo)，执行器用 SyncExecutor 便于同步断言。
+
+    默认（`full_fakes=False`）下游 REVIEW 及之后仍是抛错桩，`implemented_stages`
+    默认取服务自身默认值（生产 `IMPLEMENTED_STAGES`，止于 DESIGN）——匹配
+    `advance_workitem` 那组用例的场景。`decide_workitem` 的手动/自动分流判别性
+    用例需要 REVIEW 真正跑起来才能把两条路径的落点区分开，届时传
+    `full_fakes=True, implemented_stages=ALL_STAGES`。
+    """
     from autodev.adapters.project_repository import InMemoryProjectRepository
     from autodev.webapp.projects import ProjectRegistry
     from autodev.webapp.service import ProjectConsoleService
     from tests.fakes import build_engine_with_fakes
 
     repo = InMemoryWorkItemRepository()
-    engine = build_engine_with_fakes(repo)
+    engine = build_engine_with_fakes(repo, full_fakes=full_fakes)
+    kwargs = {} if implemented_stages is None else {"implemented_stages": implemented_stages}
     svc = ProjectConsoleService(
         InMemoryProjectRepository(),
         repo,
@@ -217,6 +227,7 @@ def _project_service_with_fakes():
         engine,
         SyncExecutor(),
         ProjectRegistry({}, None),
+        **kwargs,
     )
     return svc, repo
 
@@ -271,3 +282,69 @@ def test_advance_workitem_rejects_illegal_state() -> None:
 def test_advance_workitem_missing_returns_none() -> None:
     svc, _ = _project_service_with_fakes()
     assert svc.advance_workitem("does-not-exist") is None
+
+
+def _create_and_suspend_at_context_gate(svc, *, autonomy_enabled: bool):
+    """经真实 create_project/create_workitem 走到 CONTEXT_GATE 挂起。
+
+    goal 用"加限流"——FakeTriage 对短/未识别目标算出置信 0.45（<0.5 阈值），触发
+    AutonomyPolicy 规则 1（安全兜底，无论 autonomy_enabled）在 CONTEXT_GATE 挂起。
+    两种模式因此都从同一个挂起点出发，唯一变量是 autonomy_enabled，隔离出
+    decide_workitem 里 `auto_drive if wi.autonomy_enabled else step` 这一分流决策。
+    """
+    from autodev.domain.enums import GatePoint
+
+    pid = svc.create_project("demo-proj", "demo://repo")
+    wid = svc.create_workitem(pid, "加限流", autonomy_enabled=autonomy_enabled)
+    wi = svc.get_workitem(wid)
+    assert wi is not None
+    assert wi.state is S.WAIT_HUMAN and wi.pending_gate is GatePoint.CONTEXT_GATE
+    return wid
+
+
+def test_decide_workitem_proceed_manual_mode_advances_exactly_one_stage() -> None:
+    """手动挡：proceed 只跑 DESIGN 一阶段就停，不越过 REVIEW 继续（核心行为）。
+
+    判别性关键：implemented_stages 用 ALL_STAGES 且下游用 full_fakes（真正能跑通
+    REVIEW 的假件），否则——正如生产 IMPLEMENTED_STAGES 止于 DESIGN 的默认配置下——
+    手动 step 与自动 auto_drive 会因为 REVIEW ∉ implemented 而在同一处停下，测不出
+    「先跑 auto_drive 才被 NOT_IMPLEMENTED 挡住」与「step 本就只跑一阶段」的区别。
+    """
+    from autodev.webapp.drive import ALL_STAGES
+
+    svc, _ = _project_service_with_fakes(full_fakes=True, implemented_stages=ALL_STAGES)
+    wid = _create_and_suspend_at_context_gate(svc, autonomy_enabled=False)
+
+    svc.decide_workitem(wid, "proceed")
+
+    got = svc.get_workitem(wid)
+    assert got is not None
+    assert got.state == S.REVIEW  # 只推进了 DESIGN 这一阶段，未落到 handle_review
+    assert "design" in got.artifacts
+    assert "review" not in got.artifacts
+    # 判别性已实测验证：若误把 runner 恒定为 auto_drive（无视 autonomy_enabled），
+    # classify() 会在 DESIGN 处判 MANUAL_HOLD 直接拒绝推进——状态原地停在 DESIGN、
+    # 连 design 产物都不会产生，而非"跑得更远"，同样会让上面两个断言失败。
+
+
+def test_decide_workitem_proceed_auto_mode_drives_continuously() -> None:
+    """自动挡：proceed 后连续驱动，真正跑过 REVIEW（而不仅仅推进一阶段就停）。
+
+    该项目的 dial_factory 默认 `AutonomyDial.all_human()`（所有门都要人审），
+    所以 REVIEW 处理完（产出 review 产物）之后仍会在 REVIEW_GATE 挂起——这正是
+    "跑得比手动挡远"的可观测证据：状态落在 WAIT_HUMAN/REVIEW_GATE 而非 REVIEW，
+    且 review 产物存在，与手动挡的落点（REVIEW，无 review 产物）判然不同。
+    """
+    from autodev.domain.enums import GatePoint
+    from autodev.webapp.drive import ALL_STAGES
+
+    svc, _ = _project_service_with_fakes(full_fakes=True, implemented_stages=ALL_STAGES)
+    wid = _create_and_suspend_at_context_gate(svc, autonomy_enabled=True)
+
+    svc.decide_workitem(wid, "proceed")
+
+    got = svc.get_workitem(wid)
+    assert got is not None
+    assert got.state is S.WAIT_HUMAN and got.pending_gate is GatePoint.REVIEW_GATE
+    assert "design" in got.artifacts
+    assert "review" in got.artifacts  # 证明真的跑过了 REVIEW，而非只推进一阶段就停
