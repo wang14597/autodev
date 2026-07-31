@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from enum import Enum, auto
 
+from autodev.application.engine import Engine
 from autodev.domain.enums import WorkflowState as S
+from autodev.domain.errors import InvariantError
+from autodev.domain.ids import WorkItemId
+from autodev.domain.ports import WorkItemRepository
 from autodev.domain.work_item import WorkItem
 
 # 生产：平台已有真实适配器的阶段。新增真实适配器时改这里，
@@ -65,3 +69,54 @@ def classify(wi: WorkItem, implemented: frozenset[S]) -> DriveStop | None:
     if not wi.autonomy_enabled and wi.state not in COLLECT_STAGES:
         return DriveStop.MANUAL_HOLD
     return None
+
+
+def auto_drive(
+    repo: WorkItemRepository,
+    engine: Engine,
+    work_item_id: WorkItemId,
+    implemented: frozenset[S] = IMPLEMENTED_STAGES,
+) -> DriveStop | None:
+    """自动驱动循环：无停因就推进，一有停因立即停并返回它。
+
+    取代原 `_bounded_drive`。相对它的关键改进是**返回停因**——原实现对"合法地停"
+    与"搁浅"都是同一个静默 return，这正是搁浅工作项没有任何痕迹与入口的根源。
+    工作项不存在（已删除）时返回 None。
+    """
+    while True:
+        try:
+            wi = repo.get(work_item_id)
+        except KeyError:
+            return None
+        stop = classify(wi, implemented)
+        if stop is not None:
+            return stop
+        engine.advance(wi)
+
+
+def ensure_advanceable(wi: WorkItem, implemented: frozenset[S]) -> None:
+    """人工推进的准入校验：不合法就抛 `InvariantError`（路由映射 409）。
+
+    无视 `MANUAL_HOLD`——手动挡下"等人点"正是「推进」存在的理由，人点了就是授权。
+    其余停因（终态 / 门禁 / 未建设）一律拒绝；绝不静默无操作（静默正是原缺陷的形态）。
+
+    服务层与 `step` 共用本函数：前者在 HTTP 请求内同步校验以立刻回 409，后者在后台
+    线程真正推进前**再校验一次**（期间状态可能已变）。两处调用是有意的纵深防御，
+    但判定规则只有这一处定义。
+    """
+    stop = classify(wi, implemented)
+    if stop is not None and stop is not DriveStop.MANUAL_HOLD:
+        raise InvariantError(f"cannot advance work item stopped by {stop.name}")
+
+
+def step(
+    repo: WorkItemRepository,
+    engine: Engine,
+    work_item_id: WorkItemId,
+    implemented: frozenset[S] = IMPLEMENTED_STAGES,
+) -> DriveStop | None:
+    """人工单步推进一个阶段，返回推进后的停因。"""
+    wi = repo.get(work_item_id)
+    ensure_advanceable(wi, implemented)
+    engine.advance(wi)
+    return classify(repo.get(work_item_id), implemented)

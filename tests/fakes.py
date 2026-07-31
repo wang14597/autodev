@@ -12,7 +12,7 @@ from autodev.domain.artifacts import (
     ReviewArtifact,
     VerificationArtifact,
 )
-from autodev.domain.enums import WorkspaceMode
+from autodev.domain.enums import TriageIntent, WorkspaceMode
 from autodev.domain.events import DomainEvent
 from autodev.domain.ids import WorkItemId
 from autodev.domain.value_objects import (
@@ -117,3 +117,31 @@ class RecordingPublisher:
 
     def publish(self, event: DomainEvent) -> None:
         self.events.append(event)
+
+
+def build_engine_with_fakes(repo, *, designer=None):
+    """组装一个全假件 Engine，供驱动层测试使用（reviewer 及之后仍为抛错桩）。
+
+    triage 固定为 ACTIONABLE 意图，避免启发式对短 goal 判成 CONSULTATION 而提前 finish。
+    """
+    from datetime import UTC, datetime
+
+    from autodev.adapters.event_bus import InMemoryEventBus
+    from autodev.application.context import StageContext
+    from autodev.application.engine import Engine
+    from autodev.domain.policies import GatePolicy
+    from autodev.webapp.stubs import UnavailableStage
+
+    stub = UnavailableStage()
+    ctx = StageContext(
+        FakeWorkspace(),
+        FakeContext(),
+        designer or FakeDesign(),
+        stub,
+        stub,
+        stub,
+        stub,
+        FakeTriage(intent=TriageIntent.ACTIONABLE),
+        GatePolicy(),
+    )
+    return Engine(repo, InMemoryEventBus(), ctx, clock=lambda: datetime.now(UTC))

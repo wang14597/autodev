@@ -5,12 +5,15 @@ from datetime import datetime
 
 import pytest
 
+from autodev.adapters.memory_repository import InMemoryWorkItemRepository
 from autodev.domain.enums import GatePoint
 from autodev.domain.enums import WorkflowState as S
+from autodev.domain.errors import InvariantError
 from autodev.domain.ids import WorkItemId
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
-from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, classify
+from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, auto_drive, classify, step
+from tests.fakes import build_engine_with_fakes
 
 NOW = datetime(2026, 7, 30, 9, 0, 0)
 
@@ -25,6 +28,10 @@ _REQUIREMENT = Requirement(
 
 # 只走合法转移（与 tests/webapp/test_views.py 的 _work_item 同风格）。直接赋值 wi.state
 # 会绕过状态机不变式，且留下空 history——后者会让 stage_views 的 passed_through 失真。
+# 本次问题发生时的能力集合（DESIGN 尚未实现）。用它驱动可得到带 triage/context
+# 产物的真实搁浅态，避免手工摆状态导致 handle_design 读不到 context 产物而 KeyError。
+_OLD_CAPABILITY: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
+
 _PATH: dict[S, tuple[S, ...]] = {
     S.INTAKE: (),
     S.TRIAGE: (S.TRIAGE,),
@@ -91,3 +98,95 @@ def test_wait_human_wins_over_not_implemented() -> None:
 
     assert wi.pending_gate is GatePoint.CONTEXT_GATE  # 由 _wi 的 suspend legitimately 建立
     assert classify(wi, IMPLEMENTED_STAGES) is DriveStop.WAIT_HUMAN
+
+
+def test_auto_drive_runs_continuously_to_capability_edge() -> None:
+    """自动挡：连续跑过 DESIGN，停在 REVIEW（不在能力集合内），且不调用 review 桩。"""
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo)
+    wi = _wi(S.INTAKE, autonomy=True)
+    repo.save(wi)
+
+    stop = auto_drive(repo, engine, wi.id, IMPLEMENTED_STAGES)
+
+    assert stop is DriveStop.NOT_IMPLEMENTED
+    assert repo.get(wi.id).state is S.REVIEW
+    assert "design" in repo.get(wi.id).artifacts
+
+
+def test_manual_mode_auto_drive_stops_after_collect_stages() -> None:
+    """手动挡：收集段连续跑完后停住，绝不自行进入 DESIGN。"""
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo)
+    wi = _wi(S.INTAKE, autonomy=False)
+    repo.save(wi)
+
+    stop = auto_drive(repo, engine, wi.id, IMPLEMENTED_STAGES)
+
+    assert stop is DriveStop.WAIT_HUMAN  # CONTEXT_GATE 挂起（既有行为）
+    assert "design" not in repo.get(wi.id).artifacts
+
+
+def test_step_advances_exactly_one_stage() -> None:
+    """单步：手动挡停在 DESIGN 时，step 跑完 DESIGN 就停，不继续。
+
+    注意工作项必须**驱动**到 DESIGN 而不是手工摆到 DESIGN——`handle_design` 会读
+    `work_item.artifacts["context"]`，手工构造的工作项没有该产物会直接 KeyError。
+    这里用"当年的能力集合"（不含 DESIGN）驱动，天然得到带 triage/context 产物的搁浅态。
+    """
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo)
+    wi = _wi(S.INTAKE, autonomy=True)
+    repo.save(wi)
+    auto_drive(repo, engine, wi.id, _OLD_CAPABILITY)
+
+    # 切到手动挡：停因应为"等人点"
+    parked = repo.get(wi.id)
+    assert parked.state is S.DESIGN
+    parked.autonomy_enabled = False
+    repo.save(parked)
+    assert classify(repo.get(wi.id), IMPLEMENTED_STAGES) is DriveStop.MANUAL_HOLD
+
+    stop = step(repo, engine, wi.id, IMPLEMENTED_STAGES)
+
+    assert repo.get(wi.id).state is S.REVIEW  # 只走了一步
+    assert stop is DriveStop.NOT_IMPLEMENTED
+
+
+def test_step_ignores_manual_hold_but_refuses_other_stops() -> None:
+    """step 无视 MANUAL_HOLD（人已授权），但拒绝终态/门禁/未实现。"""
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo)
+
+    done = _wi(S.DONE, autonomy=False)
+    repo.save(done)
+    with pytest.raises(InvariantError):
+        step(repo, engine, done.id, IMPLEMENTED_STAGES)
+
+    blocked = _wi(S.REVIEW, autonomy=True)
+    repo.save(blocked)
+    with pytest.raises(InvariantError):
+        step(repo, engine, blocked.id, IMPLEMENTED_STAGES)
+
+
+def test_step_recovers_stranded_work_item() -> None:
+    """回归本次问题现场（voice-agent 那个停在「方案」三天不动的工作项）。
+
+    工作项在"DESIGN 尚未实现"的年代被驱动到 DESIGN 就搁浅了：可推进、却没有任何
+    东西会再触发它。如今 DESIGN 已进能力集合——单步推进应能直接救活，零数据迁移。
+    """
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo)
+    wi = _wi(S.INTAKE, autonomy=True)
+    repo.save(wi)
+
+    # 当年：能力集合不含 DESIGN → 驱动跑到 DESIGN 就静默停住（搁浅）
+    assert auto_drive(repo, engine, wi.id, _OLD_CAPABILITY) is DriveStop.NOT_IMPLEMENTED
+    assert repo.get(wi.id).state is S.DESIGN
+    assert "design" not in repo.get(wi.id).artifacts
+
+    # 如今：DESIGN 已进能力集合 → classify 判定可推进，单步即救活
+    assert classify(repo.get(wi.id), IMPLEMENTED_STAGES) is None
+    step(repo, engine, wi.id, IMPLEMENTED_STAGES)
+
+    assert "design" in repo.get(wi.id).artifacts
