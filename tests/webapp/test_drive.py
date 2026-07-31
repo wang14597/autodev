@@ -6,13 +6,20 @@ from datetime import datetime
 import pytest
 
 from autodev.adapters.memory_repository import InMemoryWorkItemRepository
-from autodev.domain.enums import GatePoint
+from autodev.domain.enums import GatePoint, TaskType
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import InvariantError
 from autodev.domain.ids import WorkItemId
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
 from autodev.domain.work_item import WorkItem
-from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, auto_drive, classify, step
+from autodev.webapp.drive import (
+    ALL_STAGES,
+    IMPLEMENTED_STAGES,
+    DriveStop,
+    auto_drive,
+    classify,
+    step,
+)
 from tests.fakes import build_engine_with_fakes
 
 NOW = datetime(2026, 7, 30, 9, 0, 0)
@@ -190,3 +197,53 @@ def test_step_recovers_stranded_work_item() -> None:
     step(repo, engine, wi.id, IMPLEMENTED_STAGES)
 
     assert "design" in repo.get(wi.id).artifacts
+
+
+def test_step_stops_exactly_at_review_even_though_classify_still_says_continue() -> None:
+    """判别性回归：唯一能证伪「step 其实是循环、只是把 MANUAL_HOLD 当继续」的用例。
+
+    `test_step_advances_exactly_one_stage` / `test_step_recovers_stranded_work_item`
+    都在 `IMPLEMENTED_STAGES` 下验证——但那里 REVIEW 本身不在能力集合内，落地 REVIEW
+    后 classify 立刻判 NOT_IMPLEMENTED。一个错误实现「auto_drive 但把 MANUAL_HOLD
+    当继续」在那两个用例下会被 NOT_IMPLEMENTED 挡住，产出与正确实现完全相同的可观测
+    结果——测不出区别。
+
+    这里改用 `ALL_STAGES`（REVIEW 在能力集合内）+ 下游端口用真正工作的假件
+    （`build_engine_with_fakes(..., full_fakes=True)`，而非抛错桩）+ 自定义
+    `AutonomyDial` 在 REVIEW_GATE 开放自动放行。落地 REVIEW 后 classify 仍判「可
+    继续」（None，因为 REVIEW ∈ ALL_STAGES 且 autonomy_enabled=True）。于是：
+    - 正确实现（`step` 只调用一次 `engine.advance`）必须恰好停在 REVIEW；
+    - 错误实现（循环直到停因非 MANUAL_HOLD）会继续跑过 REVIEW_GATE 进入 IMPL 及之后。
+    """
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo, full_fakes=True)
+
+    # 只放开 REVIEW_GATE；MERGE_GATE 仍需人审——不需要跑穿全生命周期，
+    # 只需证明"多跑了至少一阶段"即可与正确实现区分。
+    dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "demo", GatePoint.REVIEW_GATE)}))
+    wi = WorkItem.create(
+        WorkItemId.new(), RepoRef("demo"), _REQUIREMENT, dial, NOW, autonomy_enabled=True
+    )
+    repo.save(wi)
+
+    # 驱动到 DESIGN 但不跑 DESIGN 本身：复用 _OLD_CAPABILITY 的手法，得到带真实
+    # triage/context 产物的工作项，避免手工摆状态导致 handle_design 读不到 context
+    # 产物而 KeyError。
+    auto_drive(repo, engine, wi.id, _OLD_CAPABILITY)
+    parked = repo.get(wi.id)
+    assert parked.state is S.DESIGN
+    assert classify(parked, ALL_STAGES) is None  # 判别性前提：DESIGN 本身可继续
+
+    stop = step(repo, engine, wi.id, ALL_STAGES)
+
+    landed = repo.get(wi.id)
+    assert landed.state is S.REVIEW  # 正确实现：只推进了 DESIGN 这一阶段
+    assert landed.state not in (
+        S.IMPL,
+        S.ACCEPT,
+        S.VERIFY,
+        S.SUBMIT_MR,
+        S.DONE,
+        S.WAIT_HUMAN,
+    )  # 错误实现会落在这些"更靠后"的状态之一，而非 REVIEW
+    assert stop is None  # REVIEW ∈ ALL_STAGES 且 autonomy_enabled=True → 仍可继续
