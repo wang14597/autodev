@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from autodev.domain.artifacts import ContextArtifact
+from autodev.domain.enums import GatePoint
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.project import Project
@@ -32,8 +33,14 @@ def _work_item(state: S = S.INTAKE) -> WorkItem:
         wi.transition_to(S.TRIAGE, "stage ok", NOW)
     if state not in (S.INTAKE, S.TRIAGE):
         wi.transition_to(S.CONTEXT, "stage ok", NOW)
-    if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT):
+    if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT, S.WAIT_HUMAN, S.DONE):
         wi.transition_to(S.DESIGN, "stage ok", NOW)
+    if state is S.REVIEW:
+        wi.transition_to(S.REVIEW, "stage ok", NOW)
+    if state is S.WAIT_HUMAN:
+        wi.suspend(GatePoint.CONTEXT_GATE, "context", NOW)
+    if state is S.DONE:
+        wi.transition_to(S.DONE, "collect only", NOW)
     if state is S.FAILED and wi.state is not S.FAILED:
         wi.transition_to(S.FAILED, "failed: boom", NOW)
     return wi
@@ -50,8 +57,10 @@ def test_stage_views_context_state_marks_done_current_blocked():
     assert statuses["INTAKE"] == "done"
     assert statuses["TRIAGE"] == "done"
     assert statuses["CONTEXT"] == "current"
-    for blocked_key in ("DESIGN", "REVIEW", "IMPL", "ACCEPT", "VERIFY", "SUBMIT_MR", "DONE"):
+    assert statuses["DESIGN"] == "pending"  # DESIGN 已实现，不再是 "blocked"
+    for blocked_key in ("REVIEW", "IMPL", "ACCEPT", "VERIFY", "SUBMIT_MR"):
         assert statuses[blocked_key] == "blocked"
+    assert statuses["DONE"] == "pending"  # DONE 是终点标记，永不属于能力集合，显式排除
 
 
 def test_stage_views_intake_state_marks_rest_pending_or_blocked():
@@ -61,7 +70,8 @@ def test_stage_views_intake_state_marks_rest_pending_or_blocked():
     assert statuses["INTAKE"] == "current"
     assert statuses["TRIAGE"] == "pending"
     assert statuses["CONTEXT"] == "pending"
-    assert statuses["DESIGN"] == "blocked"
+    assert statuses["DESIGN"] == "pending"  # DESIGN 已实现，不再是 "blocked"
+    assert statuses["REVIEW"] == "blocked"
 
 
 def test_stage_views_design_state_marks_earlier_stages_done():
@@ -232,3 +242,74 @@ def test_view_detail_design_none_when_absent():
     detail = view_detail(wi, read_text=lambda p: "")
 
     assert detail["design"] is None
+
+
+# --- Task 4：删除手抄的 _UNIMPLEMENTED，改用 drive.IMPLEMENTED_STAGES + next_action 投影 ---
+
+
+def test_design_no_longer_marked_blocked() -> None:
+    """回归：DESIGN 已实现并进入能力集合，停在 CONTEXT 的工作项不应再把「方案」标为待建设。
+
+    这正是本次发现的线上 bug——views 手抄了一份"未实现阶段"清单并漂移。
+    """
+    wi = _work_item(S.CONTEXT)
+    by_key = {v["key"]: v for v in stage_views(wi)}
+
+    assert by_key["DESIGN"]["status"] == "pending"  # 曾错为 "blocked"
+    assert by_key["REVIEW"]["status"] == "blocked"  # REVIEW 确实还没建
+
+
+def test_stage_views_blocked_follows_injected_capability() -> None:
+    """「待建设」由注入的能力集合决定，而非模块内硬编码——演示组合根因此不再误标。"""
+    from autodev.webapp.drive import ALL_STAGES
+
+    wi = _work_item(S.CONTEXT)
+    statuses = {v["key"]: v["status"] for v in stage_views(wi, ALL_STAGES)}
+
+    assert "blocked" not in statuses.values()
+
+
+def test_next_action_advance_for_stranded_item() -> None:
+    """搁浅在 DESIGN 的自动挡工作项 → 可推进，前端该给「推进」按钮。"""
+    wi = _work_item(S.DESIGN)
+    wi.autonomy_enabled = True
+    detail = view_detail(wi, lambda _p: "")
+
+    assert detail["next_action"] == "advance"
+    assert detail["next_stage"] == "方案"
+
+
+def test_next_action_advance_for_manual_hold() -> None:
+    wi = _work_item(S.DESIGN)
+    wi.autonomy_enabled = False
+    assert view_detail(wi, lambda _p: "")["next_action"] == "advance"
+
+
+def test_next_action_advance_during_collect_stage_is_intentional() -> None:
+    """spec §5.2：手动挡工作项短暂停在收集段时也给「推进」按钮——这是刻意的。
+
+    若改成"收集段不给按钮"，驱动进程在收集途中被杀的工作项就会永久搁浅、没有任何
+    恢复入口，正是本次要消灭的缺陷形态。保留按钮＝守住"可推进 ⇔ 有入口"这条不变式。
+    """
+    wi = _work_item(S.TRIAGE)
+    wi.autonomy_enabled = False
+    assert view_detail(wi, lambda _p: "")["next_action"] == "advance"
+
+
+def test_next_action_blocked_for_unimplemented_stage() -> None:
+    wi = _work_item(S.REVIEW)
+    wi.autonomy_enabled = True
+    detail = view_detail(wi, lambda _p: "")
+
+    assert detail["next_action"] == "blocked"
+    assert detail["next_stage"] == "评审"
+
+
+def test_next_action_decide_when_waiting_human() -> None:
+    wi = _work_item(S.WAIT_HUMAN)
+    assert view_detail(wi, lambda _p: "")["next_action"] == "decide"
+
+
+def test_next_action_none_when_terminal() -> None:
+    wi = _work_item(S.DONE)
+    assert view_detail(wi, lambda _p: "")["next_action"] == "none"

@@ -10,6 +10,7 @@ from autodev.domain.artifacts import ContextArtifact, DesignArtifact, TriageArti
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
+from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, classify
 
 # 线性主链: INTAKE..DONE。WAIT_HUMAN/FAILED 是覆盖态，不出现在这条链里。
 _CHAIN: tuple[S, ...] = (
@@ -38,13 +39,21 @@ _LABELS: dict[S, str] = {
     S.DONE: "完成",
 }
 
-# CONTEXT 之后的阶段平台尚未实现，一律标记为 "待建设"。
-_UNIMPLEMENTED: frozenset[S] = frozenset(
-    {S.DESIGN, S.REVIEW, S.IMPL, S.ACCEPT, S.VERIFY, S.SUBMIT_MR, S.DONE}
-)
+# 停因 → 前端交互形态。None（可继续推进）与 MANUAL_HOLD 都给「推进」按钮：
+# 前者是搁浅项（历史数据/驱动进程中断），后者是手动挡正常等待，二者都需要人点一下。
+_NEXT_ACTION: dict[DriveStop | None, str] = {
+    None: "advance",
+    DriveStop.MANUAL_HOLD: "advance",
+    DriveStop.WAIT_HUMAN: "decide",
+    DriveStop.NOT_IMPLEMENTED: "blocked",
+    DriveStop.TERMINAL: "none",
+}
 
 
-def stage_views(wi: WorkItem) -> list[dict[str, str]]:
+def stage_views(
+    wi: WorkItem, implemented: frozenset[S] = IMPLEMENTED_STAGES
+) -> list[dict[str, str]]:
+    """投影生命周期主链。「待建设」由传入的能力集合判定——不在此处另存一份清单。"""
     passed_through: set[S] = set()
     for transition in wi.history:
         passed_through.add(transition.from_state)
@@ -56,7 +65,7 @@ def stage_views(wi: WorkItem) -> list[dict[str, str]]:
             status = "current"
         elif stage in passed_through:
             status = "done"
-        elif stage in _UNIMPLEMENTED:
+        elif stage not in implemented and stage is not S.DONE:
             status = "blocked"
         else:
             status = "pending"
@@ -77,7 +86,11 @@ def view_summary(wi: WorkItem) -> dict[str, object]:
     }
 
 
-def view_detail(wi: WorkItem, read_text: Callable[[str], str]) -> dict[str, object]:
+def view_detail(
+    wi: WorkItem,
+    read_text: Callable[[str], str],
+    implemented: frozenset[S] = IMPLEMENTED_STAGES,
+) -> dict[str, object]:
     context: dict[str, str] | None = None
     if "context" in wi.artifacts:
         artifact = cast(ContextArtifact, wi.artifacts["context"])
@@ -112,7 +125,7 @@ def view_detail(wi: WorkItem, read_text: Callable[[str], str]) -> dict[str, obje
         }
 
     detail: dict[str, object] = dict(view_summary(wi))
-    detail["stages"] = stage_views(wi)
+    detail["stages"] = stage_views(wi, implemented)
     detail["context"] = context
     detail["design"] = design
     detail["failure"] = failure
@@ -120,6 +133,10 @@ def view_detail(wi: WorkItem, read_text: Callable[[str], str]) -> dict[str, obje
     detail["pending_gate"] = wi.pending_gate.name if wi.pending_gate else None
     # 仅收集完成：到 DONE 但无 delivery 产物（未走 DESIGN..SUBMIT_MR）。
     detail["collect_only"] = wi.state is S.DONE and "delivery" not in wi.artifacts
+    # 单一投影字段驱动前端四态，前端不重复判断停因逻辑。
+    detail["next_action"] = _NEXT_ACTION[classify(wi, implemented)]
+    # 即将执行（或被阻塞）的阶段名——引擎推进的是**当前状态**对应的处理器。
+    detail["next_stage"] = _LABELS.get(wi.state)
     return detail
 
 
