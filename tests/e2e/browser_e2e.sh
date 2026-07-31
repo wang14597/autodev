@@ -95,7 +95,7 @@ agent-browser find text "创建工作项" click >/dev/null
 agent-browser wait --text "分诊" >/dev/null
 assert_has '[data-testid="triage-risk"]' "LOW" "场景③：分诊 risk=LOW"
 assert_count '[data-testid="approval-panel"]' "0" "场景③：低风险落地自动流转→DONE"
-# 自主开启 + 落地类 + 低风险 → FULL_DRIVE 已连带跑过 DESIGN；详情页应展示「方案」面板(DesignPort)。
+# 自主开启 + 落地类 + 低风险 → ALL_STAGES 已连带跑过 DESIGN；详情页应展示「方案」面板(DesignPort)。
 assert_count 'details[aria-label="方案"]' "1" "场景③：自主落地驱动经过 DESIGN → 展示「方案」面板"
 assert_has 'details[aria-label="方案"]' "实现方案" "场景③：「方案」面板含 DesignPort 产出的方案文档内容"
 
