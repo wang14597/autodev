@@ -13,7 +13,8 @@ from autodev.domain.enums import FailureKind, GatePoint
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.errors import StageError
 from autodev.domain.policies import GatePolicy
-from autodev.webapp.service import RUN, SyncExecutor, WorkItemConsoleService, _bounded_drive
+from autodev.webapp.drive import IMPLEMENTED_STAGES, auto_drive
+from autodev.webapp.service import SyncExecutor, WorkItemConsoleService
 from autodev.webapp.stubs import UnavailableStage
 from tests.fakes import FakeContext, FakeDesign, FakeTriage, FakeWorkspace
 
@@ -193,8 +194,80 @@ def test_drive_reaches_review_and_stops_without_calling_review_stub():
         autonomy_enabled=True,
     )
     repo.save(wi)
-    _bounded_drive(repo, engine, wid, RUN)
+    auto_drive(repo, engine, wid, IMPLEMENTED_STAGES)
 
     got = repo.get(wid)
-    assert got.state == S.REVIEW  # 跑完 DESIGN，停在 REVIEW（∉RUN）
+    assert got.state == S.REVIEW  # 跑完 DESIGN，停在 REVIEW（∉IMPLEMENTED_STAGES）
     assert "design" in got.artifacts
+
+
+def _project_service_with_fakes():
+    """返回 (ProjectConsoleService, work_repo)，执行器用 SyncExecutor 便于同步断言。"""
+    from autodev.adapters.project_repository import InMemoryProjectRepository
+    from autodev.webapp.projects import ProjectRegistry
+    from autodev.webapp.service import ProjectConsoleService
+    from tests.fakes import build_engine_with_fakes
+
+    repo = InMemoryWorkItemRepository()
+    engine = build_engine_with_fakes(repo)
+    svc = ProjectConsoleService(
+        InMemoryProjectRepository(),
+        repo,
+        FakeWorkspace(),
+        engine,
+        SyncExecutor(),
+        ProjectRegistry({}, None),
+    )
+    return svc, repo
+
+
+def _seed_workitem(repo, *, state: S, autonomy: bool):
+    from autodev.domain.artifacts import ContextArtifact
+    from autodev.domain.ids import WorkItemId
+    from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
+    from autodev.domain.work_item import WorkItem
+
+    wi = WorkItem.create(
+        WorkItemId.new(),
+        RepoRef("demo"),
+        Requirement("加限流", "demo", (), "加限流"),
+        AutonomyDial.all_human(),
+        NOW,
+        autonomy_enabled=autonomy,
+    )
+    if state is not S.INTAKE:
+        wi.state = state
+    # DESIGN 及之后的阶段处理器读取既有 context 产物（真实流水线里由 CONTEXT 阶段产出）；
+    # 这里直接跳状态而非走完整驱动，需手动补上，否则 handle_design 会因 KeyError("context")
+    # 被 Engine 吞成 TRANSIENT 重试、静默空转（state/artifacts 均不变，非本用例意图）。
+    if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT, S.WAIT_HUMAN):
+        wi.add_artifact("context", ContextArtifact("/tmp/demo", "demo", "/tmp/demo/context.md"))
+    repo.save(wi)
+    return wi.id
+
+
+def test_advance_workitem_steps_one_stage_and_exposes_capability() -> None:
+    """手动挡搁浅在 DESIGN 的工作项：advance 推进一个阶段。"""
+    svc, repo = _project_service_with_fakes()
+    wid = _seed_workitem(repo, state=S.DESIGN, autonomy=False)
+
+    assert svc.implemented_stages == IMPLEMENTED_STAGES
+    svc.advance_workitem(wid.value)
+
+    assert "design" in repo.get(wid).artifacts
+
+
+def test_advance_workitem_rejects_illegal_state() -> None:
+    """终态/未实现阶段：advance 抛 InvariantError（路由映射 409）。"""
+    from autodev.domain.errors import InvariantError
+
+    svc, repo = _project_service_with_fakes()
+    wid = _seed_workitem(repo, state=S.DONE, autonomy=False)
+
+    with pytest.raises(InvariantError):
+        svc.advance_workitem(wid.value)
+
+
+def test_advance_workitem_missing_returns_none() -> None:
+    svc, _ = _project_service_with_fakes()
+    assert svc.advance_workitem("does-not-exist") is None

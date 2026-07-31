@@ -31,8 +31,9 @@ from autodev.application.context import StageContext
 from autodev.application.engine import Engine
 from autodev.domain.policies import GatePolicy
 from autodev.webapp.app import create_app
+from autodev.webapp.drive import ALL_STAGES
 from autodev.webapp.projects import ProjectRegistry
-from autodev.webapp.service import FULL_DRIVE, ProjectConsoleService, SyncExecutor
+from autodev.webapp.service import ProjectConsoleService, SyncExecutor
 
 
 def build_demo_app() -> FastAPI:
@@ -68,6 +69,6 @@ def build_demo_app() -> FastAPI:
         SyncExecutor(),
         registry,
         dial_factory=release_all_dial,
-        run_states=FULL_DRIVE,
+        implemented_stages=ALL_STAGES,
     )
     return create_app(service)

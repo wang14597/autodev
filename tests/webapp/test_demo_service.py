@@ -26,8 +26,9 @@ from autodev.application.context import StageContext
 from autodev.application.engine import Engine
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.policies import GatePolicy
+from autodev.webapp.drive import ALL_STAGES
 from autodev.webapp.projects import ProjectRegistry
-from autodev.webapp.service import FULL_DRIVE, ProjectConsoleService, SyncExecutor
+from autodev.webapp.service import ProjectConsoleService, SyncExecutor
 
 NOW = datetime(2026, 7, 25, 12, 0, 0)
 
@@ -58,7 +59,7 @@ def _demo_service(tmp_path: Path) -> ProjectConsoleService:
         registry,
         clock=lambda: NOW,
         dial_factory=release_all_dial,
-        run_states=FULL_DRIVE,
+        implemented_stages=ALL_STAGES,
     )
 
 
