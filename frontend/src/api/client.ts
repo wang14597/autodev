@@ -109,3 +109,9 @@ export function decideWorkItem(id: string, action: DecideAction): Promise<WorkIt
     body: JSON.stringify({ action }),
   })
 }
+
+export function advanceWorkItem(id: string): Promise<WorkItemDetail> {
+  return request<WorkItemDetail>(`/api/workitems/${encodeURIComponent(id)}/advance`, {
+    method: 'POST',
+  })
+}

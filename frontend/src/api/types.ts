@@ -50,6 +50,8 @@ export interface TriageView {
 
 export type GatePoint = 'CONTEXT_GATE' | 'REVIEW_GATE' | 'MERGE_GATE'
 
+export type NextAction = 'advance' | 'decide' | 'blocked' | 'none'
+
 export interface WorkItemDetail extends WorkItemSummary {
   stages: StageView[]
   context: { markdown: string; context_file: string } | null
@@ -58,6 +60,8 @@ export interface WorkItemDetail extends WorkItemSummary {
   triage: TriageView | null
   pending_gate: GatePoint | null
   collect_only: boolean
+  next_action: NextAction
+  next_stage: string | null
 }
 
 export interface Project {
