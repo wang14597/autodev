@@ -134,9 +134,12 @@ def view_detail(
     # 仅收集完成：到 DONE 但无 delivery 产物（未走 DESIGN..SUBMIT_MR）。
     detail["collect_only"] = wi.state is S.DONE and "delivery" not in wi.artifacts
     # 单一投影字段驱动前端四态，前端不重复判断停因逻辑。
-    detail["next_action"] = _NEXT_ACTION[classify(wi, implemented)]
+    stop = classify(wi, implemented)
+    detail["next_action"] = _NEXT_ACTION[stop]
     # 即将执行（或被阻塞）的阶段名——引擎推进的是**当前状态**对应的处理器。
-    detail["next_stage"] = _LABELS.get(wi.state)
+    # 终态没有"下一阶段"。注意 S.DONE 在 _LABELS 里（流水线要显示「完成」这一行），
+    # 但它不是一个待执行阶段，所以不能直接 _LABELS.get(wi.state)。
+    detail["next_stage"] = None if stop is DriveStop.TERMINAL else _LABELS.get(wi.state)
     return detail
 
 

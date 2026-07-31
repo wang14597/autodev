@@ -50,7 +50,7 @@ def _status_by_key(views: list[dict[str, str]]) -> dict[str, str]:
     return {v["key"]: v["status"] for v in views}
 
 
-def test_stage_views_context_state_marks_done_current_blocked():
+def test_stage_views_context_state_marks_done_current_pending_blocked():
     wi = _work_item(S.CONTEXT)
     statuses = _status_by_key(stage_views(wi))
 
@@ -313,3 +313,32 @@ def test_next_action_decide_when_waiting_human() -> None:
 def test_next_action_none_when_terminal() -> None:
     wi = _work_item(S.DONE)
     assert view_detail(wi, lambda _p: "")["next_action"] == "none"
+
+
+# --- Fix round 1: next_stage 在终态必须是 None（S.DONE 在 _LABELS 里但不是待执行阶段）---
+
+
+def test_next_stage_none_when_done() -> None:
+    """DONE 是终态,虽然 _LABELS 里有「完成」这一行(供 stage_views 显示),
+    但 next_stage 不能投影出它——没有"下一阶段"可跑了。"""
+    wi = _work_item(S.DONE)
+    detail = view_detail(wi, lambda _p: "")
+
+    assert detail["next_action"] == "none"
+    assert detail["next_stage"] is None
+
+
+def test_next_stage_none_when_failed() -> None:
+    wi = _work_item(S.FAILED)
+    detail = view_detail(wi, lambda _p: "")
+
+    assert detail["next_action"] == "none"
+    assert detail["next_stage"] is None
+
+
+def test_next_stage_still_projects_label_for_live_stage() -> None:
+    """非终态的正常路径回归：next_stage 仍应给出当前阶段的中文标签。"""
+    wi = _work_item(S.DESIGN)
+    detail = view_detail(wi, lambda _p: "")
+
+    assert detail["next_stage"] == "方案"
