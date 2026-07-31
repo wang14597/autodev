@@ -175,18 +175,44 @@ from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, classify
 
 NOW = datetime(2026, 7, 30, 9, 0, 0)
 
+# goal 必须是完整英文短句 + 非空 acceptance_hints：FakeTriage 的启发式对短/未识别目标
+# 扣置信分，置信 <0.5 会触发 AutonomyPolicy 规则 1 强制人审（与 autonomy_enabled 无关），
+# 那样自动挡用例就验不到"连续跑完 DESIGN"。短中文目标"加限流"实测置信 0.45——
+# 详见 tests/webapp/test_service.py:177 已记录过的同一个坑。
+_GOAL = "add rate limiting for the api gateway"
+_REQUIREMENT = Requirement(
+    _GOAL, "demo", ("no regression in throughput",), f"{_GOAL} to protect it from abuse"
+)
+
+# 只走合法转移（与 tests/webapp/test_views.py 的 _work_item 同风格）。直接赋值 wi.state
+# 会绕过状态机不变式，且留下空 history——后者会让 stage_views 的 passed_through 失真。
+_PATH: dict[S, tuple[S, ...]] = {
+    S.INTAKE: (),
+    S.TRIAGE: (S.TRIAGE,),
+    S.CONTEXT: (S.TRIAGE, S.CONTEXT),
+    S.DESIGN: (S.TRIAGE, S.CONTEXT, S.DESIGN),
+    S.REVIEW: (S.TRIAGE, S.CONTEXT, S.DESIGN, S.REVIEW),
+    S.DONE: (S.TRIAGE, S.CONTEXT, S.DONE),  # CONTEXT→DONE 是"仅收集完成"的合法边
+    S.FAILED: (S.TRIAGE, S.FAILED),
+}
+
 
 def _wi(state: S, *, autonomy: bool) -> WorkItem:
     wi = WorkItem.create(
         WorkItemId.new(),
         RepoRef("demo"),
-        Requirement("加限流", "demo", (), "加限流"),
+        _REQUIREMENT,
         AutonomyDial.all_human(),
         NOW,
         autonomy_enabled=autonomy,
     )
-    if state is not S.INTAKE:
-        wi.state = state
+    if state is S.WAIT_HUMAN:
+        for s in (S.TRIAGE, S.CONTEXT):
+            wi.transition_to(s, "stage ok", NOW)
+        wi.suspend(GatePoint.CONTEXT_GATE, "context", NOW)
+        return wi
+    for s in _PATH[state]:
+        wi.transition_to(s, "stage ok", NOW)
     return wi
 
 
@@ -220,9 +246,11 @@ def test_classify_table(state: S, autonomy: bool, expected: DriveStop | None) ->
 
 
 def test_wait_human_wins_over_not_implemented() -> None:
-    """挂在门上的工作项即使当前阶段不在能力集合内，也应报 WAIT_HUMAN（须走 /decide）。"""
+    """挂在门上的工作项：WAIT_HUMAN 本身不在能力集合内，但应报 WAIT_HUMAN 而非
+    NOT_IMPLEMENTED——判定顺序即优先级，须走 /decide 而不是「推进」。"""
     wi = _wi(S.WAIT_HUMAN, autonomy=False)
-    wi.pending_gate = GatePoint.CONTEXT_GATE
+
+    assert wi.pending_gate is GatePoint.CONTEXT_GATE  # 由 _wi 的 suspend legitimately 建立
     assert classify(wi, IMPLEMENTED_STAGES) is DriveStop.WAIT_HUMAN
 ```
 
@@ -287,7 +315,8 @@ git commit -m "feat(drive): 阶段能力单一真源 + 停因分类 + 防漂移�
 - Consumes: Task 1 的 `classify` / DriveStop / `IMPLEMENTED_STAGES` / `COLLECT_STAGES`。
 - Produces:
   - `auto_drive(repo: WorkItemRepository, engine: Engine, work_item_id: WorkItemId, implemented: frozenset[WorkflowState] = IMPLEMENTED_STAGES) -> DriveStop | None` —— 循环推进直到出现停因并返回它；工作项不存在时返回 `None`。
-  - `step(repo, engine, work_item_id, implemented=IMPLEMENTED_STAGES) -> DriveStop | None` —— 只推进一个阶段并返回推进后的停因；非法态抛 `InvariantError`。
+  - `ensure_advanceable(wi: WorkItem, implemented: frozenset[WorkflowState]) -> None` —— 人工推进的准入校验，不合法抛 `InvariantError`。**准入规则的唯一定义处**，服务层与 `step` 共用（前者同步校验回 409，后者后台推进前复校验）。
+  - `step(repo, engine, work_item_id, implemented=IMPLEMENTED_STAGES) -> DriveStop | None` —— 只推进一个阶段并返回推进后的停因；准入委托 `ensure_advanceable`。
 
 - [ ] **Step 1: 写两个入口的测试**
 
@@ -298,6 +327,14 @@ from autodev.adapters.memory_repository import InMemoryWorkItemRepository
 from autodev.domain.errors import InvariantError
 from autodev.webapp.drive import auto_drive, step
 from tests.fakes import build_engine_with_fakes
+```
+
+并加一个模块级常量，代表"DESIGN 落地之前"的能力集合——用它驱动即可复现搁浅现场：
+
+```python
+# 本次问题发生时的能力集合（DESIGN 尚未实现）。用它驱动可得到带 triage/context
+# 产物的真实搁浅态，避免手工摆状态导致 handle_design 读不到 context 产物而 KeyError。
+_OLD_CAPABILITY: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
 ```
 
 ```python
@@ -329,15 +366,28 @@ def test_manual_mode_auto_drive_stops_after_collect_stages() -> None:
 
 
 def test_step_advances_exactly_one_stage() -> None:
-    """单步：手动挡停在 DESIGN 时，step 跑完 DESIGN 就停，不继续。"""
+    """单步：手动挡停在 DESIGN 时，step 跑完 DESIGN 就停，不继续。
+
+    注意工作项必须**驱动**到 DESIGN 而不是手工摆到 DESIGN——`handle_design` 会读
+    `work_item.artifacts["context"]`，手工构造的工作项没有该产物会直接 KeyError。
+    这里用"当年的能力集合"（不含 DESIGN）驱动，天然得到带 triage/context 产物的搁浅态。
+    """
     repo = InMemoryWorkItemRepository()
     engine = build_engine_with_fakes(repo)
-    wi = _wi(S.DESIGN, autonomy=False)
+    wi = _wi(S.INTAKE, autonomy=True)
     repo.save(wi)
+    auto_drive(repo, engine, wi.id, _OLD_CAPABILITY)
+
+    # 切到手动挡：停因应为"等人点"
+    parked = repo.get(wi.id)
+    assert parked.state is S.DESIGN
+    parked.autonomy_enabled = False
+    repo.save(parked)
+    assert classify(repo.get(wi.id), IMPLEMENTED_STAGES) is DriveStop.MANUAL_HOLD
 
     stop = step(repo, engine, wi.id, IMPLEMENTED_STAGES)
 
-    assert repo.get(wi.id).state is S.REVIEW
+    assert repo.get(wi.id).state is S.REVIEW  # 只走了一步
     assert stop is DriveStop.NOT_IMPLEMENTED
 
 
@@ -358,17 +408,26 @@ def test_step_ignores_manual_hold_but_refuses_other_stops() -> None:
 
 
 def test_step_recovers_stranded_work_item() -> None:
-    """回归本次问题现场：自动挡工作项搁浅在 DESIGN（当年 DESIGN 不在能力集合内），
-    如今 DESIGN 已实现——单步推进应能直接把它救活，无需任何数据迁移。"""
+    """回归本次问题现场（voice-agent 那个停在「方案」三天不动的工作项）。
+
+    工作项在"DESIGN 尚未实现"的年代被驱动到 DESIGN 就搁浅了：可推进、却没有任何
+    东西会再触发它。如今 DESIGN 已进能力集合——单步推进应能直接救活，零数据迁移。
+    """
     repo = InMemoryWorkItemRepository()
     engine = build_engine_with_fakes(repo)
-    stranded = _wi(S.DESIGN, autonomy=True)
-    repo.save(stranded)
+    wi = _wi(S.INTAKE, autonomy=True)
+    repo.save(wi)
 
-    assert classify(stranded, IMPLEMENTED_STAGES) is None  # 可推进 → 按钮该亮
-    step(repo, engine, stranded.id, IMPLEMENTED_STAGES)
+    # 当年：能力集合不含 DESIGN → 驱动跑到 DESIGN 就静默停住（搁浅）
+    assert auto_drive(repo, engine, wi.id, _OLD_CAPABILITY) is DriveStop.NOT_IMPLEMENTED
+    assert repo.get(wi.id).state is S.DESIGN
+    assert "design" not in repo.get(wi.id).artifacts
 
-    assert "design" in repo.get(stranded.id).artifacts
+    # 如今：DESIGN 已进能力集合 → classify 判定可推进，单步即救活
+    assert classify(repo.get(wi.id), IMPLEMENTED_STAGES) is None
+    step(repo, engine, wi.id, IMPLEMENTED_STAGES)
+
+    assert "design" in repo.get(wi.id).artifacts
 ```
 
 - [ ] **Step 2: 新增 `build_engine_with_fakes` 助手到 `tests/fakes.py`**
@@ -454,22 +513,30 @@ def auto_drive(
         engine.advance(wi)
 
 
+def ensure_advanceable(wi: WorkItem, implemented: frozenset[S]) -> None:
+    """人工推进的准入校验：不合法就抛 `InvariantError`（路由映射 409）。
+
+    无视 `MANUAL_HOLD`——手动挡下"等人点"正是「推进」存在的理由，人点了就是授权。
+    其余停因（终态 / 门禁 / 未建设）一律拒绝；绝不静默无操作（静默正是原缺陷的形态）。
+
+    服务层与 `step` 共用本函数：前者在 HTTP 请求内同步校验以立刻回 409，后者在后台
+    线程真正推进前**再校验一次**（期间状态可能已变）。两处调用是有意的纵深防御，
+    但判定规则只有这一处定义。
+    """
+    stop = classify(wi, implemented)
+    if stop is not None and stop is not DriveStop.MANUAL_HOLD:
+        raise InvariantError(f"cannot advance work item stopped by {stop.name}")
+
+
 def step(
     repo: WorkItemRepository,
     engine: Engine,
     work_item_id: WorkItemId,
     implemented: frozenset[S] = IMPLEMENTED_STAGES,
 ) -> DriveStop | None:
-    """人工单步推进一个阶段，返回推进后的停因。
-
-    无视 `MANUAL_HOLD`——手动挡下"等人点"正是本函数存在的理由，人点了就是授权。
-    其余停因（终态 / 门禁 / 未实现）一律拒绝并抛 `InvariantError`，由路由映射 409；
-    绝不静默无操作（静默正是原缺陷的形态）。
-    """
+    """人工单步推进一个阶段，返回推进后的停因。"""
     wi = repo.get(work_item_id)
-    stop = classify(wi, implemented)
-    if stop is not None and stop is not DriveStop.MANUAL_HOLD:
-        raise InvariantError(f"cannot advance work item stopped by {stop.name}")
+    ensure_advanceable(wi, implemented)
     engine.advance(wi)
     return classify(repo.get(work_item_id), implemented)
 ```
@@ -588,17 +655,10 @@ Expected: FAIL — `AttributeError: 'ProjectConsoleService' object has no attrib
 删除 `src/autodev/webapp/service.py` 第 27-42 行（`RUN` 与 `FULL_DRIVE` 两个常量及其注释）与第 60-79 行（`_bounded_drive` 整个函数），改为从 `drive.py` 导入：
 
 ```python
-from autodev.webapp.drive import (
-    ALL_STAGES,
-    IMPLEMENTED_STAGES,
-    DriveStop,
-    auto_drive,
-    classify,
-    step,
-)
+from autodev.webapp.drive import IMPLEMENTED_STAGES, auto_drive, ensure_advanceable, step
 ```
 
-`ALL_STAGES` 在本模块虽不直接使用，但为保持 `demo_config.py` 的既有导入路径（它从 `service` 导入 `FULL_DRIVE`）可一并 re-export；若 lint 报未使用，则改为让 `demo_config.py` 直接从 `drive.py` 导入并去掉此行。**推荐后者**（依赖指向更直接）。
+**不要**在 `service.py` 里 re-export `ALL_STAGES`（会被 lint 判未使用，且多一跳无意义的依赖）。演示组合根与相关测试直接从 `drive.py` 导入它——见 Step 10。
 
 - [ ] **Step 5: 把 `WorkItemConsoleService._drive` 切到 `auto_drive`**
 
@@ -672,16 +732,15 @@ from autodev.webapp.drive import (
             wi = self._work_repo.get(wid)
         except KeyError:
             return None
-        stop = classify(wi, self._implemented_stages)
-        if stop is not None and stop is not DriveStop.MANUAL_HOLD:
-            raise InvariantError(f"cannot advance work item stopped by {stop.name}")
+        # 准入规则只在 drive.py 定义一处；这里同步校验以立刻回 409，step 在后台再校验一次。
+        ensure_advanceable(wi, self._implemented_stages)
         self._executor.submit(
             lambda: step(self._work_repo, self._engine, wid, self._implemented_stages)
         )
         return self.get_workitem(work_item_id)
 ```
 
-在 service.py 顶部补 `from autodev.domain.errors import InvariantError`（该文件已导入 `StageError`，同模块）。
+Step 4 的导入清单相应改为 `ensure_advanceable, step`（无需 `DriveStop` / `classify` / `InvariantError`——判定与抛错都在 `ensure_advanceable` 里）。
 
 - [ ] **Step 10: 跟随改名，修好既有测试与演示组合根**
 
@@ -713,7 +772,25 @@ git commit -m "feat(service): 单步推进接线 + 能力集合改名并对外�
 - Consumes: Task 1 的 `IMPLEMENTED_STAGES` / `classify` / DriveStop。
 - Produces: `stage_views(wi, implemented=IMPLEMENTED_STAGES)`、`view_detail(wi, read_text, implemented=IMPLEMENTED_STAGES)`；detail 新增两键 —— `next_action ∈ {"advance","decide","blocked","none"}`、`next_stage: str | None`（即将执行或被阻塞的阶段中文名）。
 
-- [ ] **Step 1: 写投影测试（含本次 bug 的回归断言）**
+- [ ] **Step 1: 先扩 `tests/webapp/test_views.py` 的 `_work_item` 助手支持更多状态**
+
+**必须先做这一步。** 现有 `_work_item`（第 23-39 行）只走到 DESIGN：传 `S.REVIEW` / `S.WAIT_HUMAN` / `S.DONE` 会**静默返回一个 DESIGN 工作项**，让本任务的断言测到错误的状态。把该函数尾部的 FAILED 分支改为：
+
+```python
+    if state is S.REVIEW:
+        wi.transition_to(S.REVIEW, "stage ok", NOW)
+    if state is S.WAIT_HUMAN:
+        wi.suspend(GatePoint.CONTEXT_GATE, "context", NOW)
+    if state is S.DONE:
+        wi.transition_to(S.DONE, "collect only", NOW)
+    if state is S.FAILED and wi.state is not S.FAILED:
+        wi.transition_to(S.FAILED, "failed: boom", NOW)
+    return wi
+```
+
+前置条件已核对（`work_item.py:_build_allowed`）：`DESIGN→REVIEW`、`CONTEXT→WAIT_HUMAN`、`CONTEXT→DONE`（仅收集完成）都是合法边。注意 `S.WAIT_HUMAN` 与 `S.DONE` 必须**从 CONTEXT 出发**，所以它们要落在"走到 DESIGN"那个分支之外——把现有第 32-34 行的 DESIGN 分支条件改为 `if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT, S.WAIT_HUMAN, S.DONE):`。文件顶部补 `GatePoint` 导入：`from autodev.domain.enums import GatePoint`。
+
+- [ ] **Step 2: 写投影测试（含本次 bug 的回归断言）**
 
 追加到 `tests/webapp/test_views.py`：
 
@@ -786,12 +863,12 @@ def test_next_action_none_when_terminal() -> None:
     assert view_detail(wi, lambda _p: "")["next_action"] == "none"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [ ] **Step 3: 跑测试确认失败**
 
 Run: `pytest tests/webapp/test_views.py -q`
 Expected: FAIL — `KeyError: 'next_action'`，以及 `test_design_no_longer_marked_blocked` 断言失败（当前确实是 `blocked`）
 
-- [ ] **Step 3: 改 views.py —— 删手抄清单，接入能力集合**
+- [ ] **Step 4: 改 views.py —— 删手抄清单，接入能力集合**
 
 删除第 41-44 行（`_UNIMPLEMENTED` 及其注释），在 import 区加：
 
@@ -827,7 +904,7 @@ def stage_views(
 
 注意 `S.DONE` 从不属于能力集合（它不是可执行阶段，是终点），故显式排除，否则「完成」会被误标「待建设」。
 
-- [ ] **Step 4: 加 `next_action` / `next_stage` 投影**
+- [ ] **Step 5: 加 `next_action` / `next_stage` 投影**
 
 在 `_LABELS` 之后加映射表：
 
@@ -868,12 +945,12 @@ def view_detail(
     return detail
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [ ] **Step 6: 跑测试确认通过**
 
 Run: `pytest tests/webapp/test_views.py -q`
 Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
 git add src/autodev/webapp/views.py tests/webapp/test_views.py
