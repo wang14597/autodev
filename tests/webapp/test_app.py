@@ -51,10 +51,12 @@ class FakeProjectConsoleService:
         projects: list[Project] | None = None,
         workitems: list[WorkItem] | None = None,
         advance_raises: bool = False,
+        implemented_stages: frozenset[S] | None = None,
     ) -> None:
         self._projects: dict[str, Project] = {p.id.value: p for p in (projects or [])}
         self._workitems: dict[str, WorkItem] = {wi.id.value: wi for wi in (workitems or [])}
         self.advance_raises = advance_raises
+        self._implemented_stages = implemented_stages
 
     def _count(self, project_id: str) -> int:
         return sum(
@@ -151,6 +153,8 @@ class FakeProjectConsoleService:
 
     @property
     def implemented_stages(self) -> frozenset[S]:
+        if self._implemented_stages is not None:
+            return self._implemented_stages
         from autodev.webapp.drive import IMPLEMENTED_STAGES
 
         return IMPLEMENTED_STAGES
@@ -475,6 +479,28 @@ def test_advance_endpoint_returns_detail() -> None:
 
     assert response.status_code == 200
     assert response.json()["next_action"] in {"advance", "decide", "blocked", "none"}
+
+
+def test_advance_endpoint_threads_service_capability_set() -> None:
+    """`/advance` 必须用 `service.implemented_stages`，不能悄悄退回生产默认集合。
+
+    fake 的能力集合特意排除 DESIGN（生产默认 IMPLEMENTED_STAGES 是包含的），工作项
+    停在 DESIGN。若路由把 `service.implemented_stages` 传参丢了、view_detail 退回
+    默认集合，DESIGN 就会被当作"已建设"从而判成 advance —— 断言必须精确到
+    "blocked"/"方案"，而不是宽松的集合成员判断，才能捕获这类回归。
+    """
+    project = _project()
+    wi = _work_item(project, state=S.CONTEXT)
+    wi.transition_to(S.DESIGN, "stage ok", NOW)
+    restricted = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
+    client = _client(FakeProjectConsoleService([project], [wi], implemented_stages=restricted))
+
+    response = client.post(f"/api/workitems/{wi.id.value}/advance")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["next_action"] == "blocked"
+    assert body["next_stage"] == "方案"
 
 
 def test_advance_endpoint_404_when_missing() -> None:
