@@ -25,13 +25,17 @@ describe('LifelinePipeline', () => {
   })
 
   it('does not sonar the current stage once the WorkItem has come to rest', () => {
+    // DESIGN is no longer a resting state for this purpose — manual tempo now
+    // routinely parks there awaiting a 「推进」 click while the stage may still
+    // be executing, so it must keep sonar-ing. WAIT_HUMAN (an open gate) is the
+    // genuine rest: nothing is running until a human decides.
     const restingStages: StageView[] = [
       { key: 'INTAKE', label: '需求录入', status: 'done' },
       { key: 'TRIAGE', label: '分诊', status: 'done' },
-      { key: 'CONTEXT', label: '上下文', status: 'done' },
-      { key: 'DESIGN', label: '方案', status: 'current' },
+      { key: 'CONTEXT', label: '上下文', status: 'current' },
+      { key: 'DESIGN', label: '方案', status: 'pending' },
     ]
-    const { container } = render(<LifelinePipeline stages={restingStages} state="DESIGN" />)
+    const { container } = render(<LifelinePipeline stages={restingStages} state="WAIT_HUMAN" />)
     const currentDot = container.querySelector('[data-status="current"]')
     expect(currentDot?.querySelector('[class*="sonar"]')).not.toBeInTheDocument()
   })

@@ -161,7 +161,13 @@ def test_step_advances_exactly_one_stage() -> None:
 
 
 def test_step_ignores_manual_hold_but_refuses_other_stops() -> None:
-    """step 无视 MANUAL_HOLD（人已授权），但拒绝终态/门禁/未实现。"""
+    """step 无视 MANUAL_HOLD（人已授权），但拒绝终态/门禁/未实现。
+
+    这三条断言是铁律 5（人审是一等状态）在驱动层的具体化：`waiting`
+    (WAIT_HUMAN) 一条尤其关键——若有人把 `ensure_advanceable` 的豁免从
+    "仅 MANUAL_HOLD" 悄悄放宽到也豁免 WAIT_HUMAN，整套测试仍会全绿，但
+    「推进」就能悄悄跨过一个开着的风险门禁执行下一阶段。
+    """
     repo = InMemoryWorkItemRepository()
     engine = build_engine_with_fakes(repo)
 
@@ -174,6 +180,11 @@ def test_step_ignores_manual_hold_but_refuses_other_stops() -> None:
     repo.save(blocked)
     with pytest.raises(InvariantError):
         step(repo, engine, blocked.id, IMPLEMENTED_STAGES)
+
+    waiting = _wi(S.WAIT_HUMAN, autonomy=False)
+    repo.save(waiting)
+    with pytest.raises(InvariantError):
+        step(repo, engine, waiting.id, IMPLEMENTED_STAGES)
 
 
 def test_step_recovers_stranded_work_item() -> None:

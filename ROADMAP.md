@@ -72,7 +72,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 
 **实现范围**：
 - ✓ **`Project` 领域聚合**：`ProjectId`、name、仓库来源、跟踪分支(`branch`)、project 级 `AutonomyDial`；配套 `ProjectRepository` 端口（`SqliteProjectRepository` / `InMemoryProjectRepository` 两实现）。`WorkItem` 增 `project_id` 归属、`base_branch`。出站端口由 9 增至 <!-- fact:ports -->11（新增 ProjectRepository）。
-- ✓ **Web 后端**（`src/autodev/webapp/`，FastAPI）：项目与工作项 REST API（`GET/POST /api/projects`、项目详情/刷新/删除、项目下建工作项、列分支、切默认分支）；**有界驱动**只自动跑 INTAKE→TRIAGE→CONTEXT 止于 DESIGN；生产托管 `frontend/dist`（SPA 回退 + 目录穿越防护）。
+- ✓ **Web 后端**（`src/autodev/webapp/`，FastAPI）：项目与工作项 REST API（`GET/POST /api/projects`、项目详情/刷新/删除、项目下建工作项、列分支、切默认分支）；**驱动**跑 INTAKE→TRIAGE→CONTEXT→DESIGN，止于 REVIEW（能力集合单一真源见 `src/autodev/webapp/drive.py` 的 `IMPLEMENTED_STAGES`）；工作项的 `autonomy_enabled` 开关在自动挡（连续跑到能力边界）与手动挡（收集段外每阶段等人点「推进」）间切换；生产托管 `frontend/dist`（SPA 回退 + 目录穿越防护）。
 - ✓ **前端控制台**（`frontend/`，Vite + React + TypeScript + TanStack Query + React Router）：以「项目」为中心的两步导航（项目列表 → 项目详情 → 工作项详情），创建项目/工作项、生命周期流水线可视化、上下文简报渲染；字体与 Markdown 库本地打包（运行时零公网 CDN）；antd Select 模糊搜索切换默认分支。
 - ✓ **本地仓库直挂 worktree**：项目输入为本地 git 目录时自动登记并 `git worktree add`（共享对象库、秒级、不碰工作目录），登记持久化到 `~/.autodev/repos.json`。
 - ✓ **前端质量门禁**：typecheck / oxlint / vitest / build / prettier，接入 GitHub Actions frontend job。
@@ -82,7 +82,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 - ✓ 前端组件与 hooks 有 vitest 覆盖
 - ✓ 未构建前端时回退占位页、API 仍可用
 
-**尚缺（转入切片 2/后续）**：真实浏览器端到端(E2E)冒烟、DESIGN 及之后阶段的真实驱动（当前止于 CONTEXT，DESIGN 起为抛错桩）、Delivery 的 push/开 MR。
+**尚缺（转入切片 2/后续）**：真实浏览器端到端(E2E)冒烟、REVIEW 及之后阶段的真实驱动（当前止于 DESIGN，REVIEW 起为抛错桩）、Delivery 的 push/开 MR。
 
 ---
 
@@ -305,6 +305,8 @@ AutonomyDial = {
 **目标**：支持多 worker 并行处理多个 WorkItem，避免冲突
 
 **当前约束**：单线程处理，WorkItem 串行推进
+
+**已知债务**：`POST /api/workitems/{id}/advance`（人工「推进」单步）未加乐观锁——校验（`ensure_advanceable`）与真正执行（`step`）之间无并发保护，双击/多标签页并发点击可让同一 WorkItem 被推进两次。手动挡刚落地，暂不阻塞合并，留待本节的 optimistic locking 一并解决。
 
 **加深**：
 - WorkItemRepository 支持"领取锁"（optimistic locking）：多个 worker 同时拉取可推进列表，但同一 WorkItem 仅一个 worker 可推进

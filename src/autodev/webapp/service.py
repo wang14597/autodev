@@ -22,7 +22,14 @@ from autodev.domain.ports import ProjectRepository, WorkItemRepository, Workspac
 from autodev.domain.project import Project
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement, WorkspaceHandle
 from autodev.domain.work_item import WorkItem
-from autodev.webapp.drive import IMPLEMENTED_STAGES, DriveStop, auto_drive, ensure_advanceable, step
+from autodev.webapp.drive import (
+    IMPLEMENTED_STAGES,
+    DriveStop,
+    auto_drive,
+    classify,
+    ensure_advanceable,
+    step,
+)
 from autodev.webapp.projects import ProjectRegistry
 
 _Driver = Callable[[WorkItemRepository, Engine, WorkItemId, frozenset[S]], DriveStop | None]
@@ -299,8 +306,14 @@ class ProjectConsoleService:
             # 手动挡下，门禁的「继续」即视为"授权走这一步"——跑一个阶段就交还控制权，
             # 免得为同一个意图点两下（先点「继续」再点「推进」）。自动挡照旧连续跑。
             wi = self._work_repo.get(wid)
-            runner = auto_drive if wi.autonomy_enabled else step
-            self._executor.submit(lambda: self._run_driver(runner, wid))
+            # resume 可能合法落在终态（如 MERGE_GATE 的 "proceed" → S.DONE）：这种情况下
+            # 不该再提交 runner —— step/auto_drive 会走 ensure_advanceable → classify →
+            # TERMINAL 抛 InvariantError，把"人审后已正常完成"误报成推进失败（曾在
+            # SyncExecutor 下把 200 变成 400，正是本分支要消灭的那类"合法停止被当错误"）。
+            stop = classify(wi, self._implemented_stages)
+            if stop is None or stop is DriveStop.MANUAL_HOLD:
+                runner = auto_drive if wi.autonomy_enabled else step
+                self._executor.submit(lambda: self._run_driver(runner, wid))
         return self.get_workitem(work_item_id)
 
     def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:

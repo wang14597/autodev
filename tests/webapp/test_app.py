@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from autodev.domain.enums import GatePoint
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.project import Project
@@ -23,6 +24,11 @@ def _project(name: str = "demo", repo_source: str | None = None) -> Project:
 
 
 def _work_item(project: Project, goal: str = "加限流", state: S = S.INTAKE) -> WorkItem:
+    """构造合法转移到 `state` 的工作项(与 tests/webapp/test_views.py 的同名 helper 同风格)。
+
+    覆盖 TRIAGE/CONTEXT/DESIGN/REVIEW/WAIT_HUMAN/DONE/FAILED——早前版本在 CONTEXT
+    之后静默截断, 请求 DESIGN/DONE 的调用方会拿到一个 CONTEXT 工作项而不自知。
+    """
     wi = WorkItem.create(
         WorkItemId.new(),
         RepoRef(project.name),
@@ -35,6 +41,14 @@ def _work_item(project: Project, goal: str = "加限流", state: S = S.INTAKE) -
         wi.transition_to(S.TRIAGE, "stage ok", NOW)
     if state not in (S.INTAKE, S.TRIAGE):
         wi.transition_to(S.CONTEXT, "stage ok", NOW)
+    if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT, S.WAIT_HUMAN, S.DONE):
+        wi.transition_to(S.DESIGN, "stage ok", NOW)
+    if state is S.REVIEW:
+        wi.transition_to(S.REVIEW, "stage ok", NOW)
+    if state is S.WAIT_HUMAN:
+        wi.suspend(GatePoint.CONTEXT_GATE, "context", NOW)
+    if state is S.DONE:
+        wi.transition_to(S.DONE, "collect only", NOW)
     if state is S.FAILED and wi.state is not S.FAILED:
         wi.transition_to(S.FAILED, "failed: boom", NOW)
     return wi
@@ -478,7 +492,9 @@ def test_advance_endpoint_returns_detail() -> None:
     response = client.post(f"/api/workitems/{wi.id.value}/advance")
 
     assert response.status_code == 200
-    assert response.json()["next_action"] in {"advance", "decide", "blocked", "none"}
+    # DESIGN ∈ 生产默认能力集合，手动挡（默认 autonomy_enabled=False）下的搁浅态 →
+    # next_action 必须精确是 "advance"，而不是"四态之一"这种恒真断言。
+    assert response.json()["next_action"] == "advance"
 
 
 def test_advance_endpoint_threads_service_capability_set() -> None:
@@ -490,8 +506,7 @@ def test_advance_endpoint_threads_service_capability_set() -> None:
     "blocked"/"方案"，而不是宽松的集合成员判断，才能捕获这类回归。
     """
     project = _project()
-    wi = _work_item(project, state=S.CONTEXT)
-    wi.transition_to(S.DESIGN, "stage ok", NOW)
+    wi = _work_item(project, state=S.DESIGN)
     restricted = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
     client = _client(FakeProjectConsoleService([project], [wi], implemented_stages=restricted))
 

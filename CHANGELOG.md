@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **行为变更**：`autonomy_enabled` 为关的工作项，行为从"过了 CONTEXT_GATE 便连续跑"变为"每步等人点「推进」"。这是节奏开关泛化的直接后果(见上)；自动挡行为不变。
 
 ### Fixed
+- **手动挡终审收尾（合并前最终评审）**：
+  - **BLOCKER — resume 落地终态时误报推进失败**：`decide_workitem` 的 `proceed` 分支曾无条件提交 runner；`resume_target(GatePoint.MERGE_GATE, "proceed")` 是 `S.DONE`（终态），手动挡下提交的 `step` 经 `ensure_advanceable`→`classify` 判定 `TERMINAL` 抛 `InvariantError`，在 `SyncExecutor` 下把"已正常完成"的 200 变成 400。已改为 resume 后重读工作项、仅当 `classify` 为 `None`/`MANUAL_HOLD` 才提交 runner；新增 `tests/webapp/test_demo_service.py` 手动挡回归用例，全程 `autonomy_enabled=False` 走完 CONTEXT/REVIEW/MERGE 三个门到 DONE，断言不抛异常（回退旧逻辑可复现该用例失败）。
+  - **缺失的安全性质**：`tests/webapp/test_drive.py` 新增对 `WAIT_HUMAN` 工作项的 `ensure_advanceable`/`step` 断言——此前只验证 `DONE`/`REVIEW`，若有人把豁免从"仅 `MANUAL_HOLD`"悄悄放宽到也豁免 `WAIT_HUMAN`，全套测试仍会绿灯，「推进」就能跨过一个开着的风险门禁。
+  - **控制台轮询在手动挡常驻的阶段处失效**：`frontend/src/lib/workitem.ts` 的 `isRunning`/`pollingInterval` 只覆盖 `INTAKE/TRIAGE/CONTEXT`，DESIGN 及之后（手动挡下人点「推进」后常驻数分钟的阶段）不再轮询——`POST /advance` 校验同步返回、执行异步，页面看起来像"点了没反应"。已把 DESIGN/REVIEW/IMPL/ACCEPT/VERIFY/SUBMIT_MR 也纳入轮询范围（`WAIT_HUMAN`/`DONE`/`FAILED` 仍是真正的静止态，不纳入）。
+  - `tests/webapp/test_app.py` 的 `_work_item` 测试 helper 曾在 CONTEXT 后静默截断（请求 DESIGN/DONE 会拿到 CONTEXT 工作项），已比照 `tests/webapp/test_views.py` 的同名 helper 扩展到 DESIGN/REVIEW/WAIT_HUMAN/DONE；`test_advance_endpoint_returns_detail` 原先的恒真断言（`next_action in {四态}`）随之收紧为精确值 `"advance"`。
+  - `ROADMAP.md` 两处过时的驱动边界描述（"止于 DESIGN"/"DESIGN 起为抛错桩"）更正为反映 DESIGN 已落地、止于 REVIEW 的现状；「并发与调度」补记 `/advance` 尚无乐观锁、双击可重复推进的已知债务。
 - **「方案」阶段在 UI 上被误标「待建设」**：`views.py` 手抄了一份"未实现阶段"清单，与驱动用的那份是同一事实的第二份副本且已漂移——DESIGN 早已实现并进入驱动集合，停在上下文阶段的工作项却仍把「方案」显示为「待建设」。已删除该副本，改为消费单一真源；并加防漂移守卫测试(断言能力集合与生产组合根里"端口是否为桩"逐阶段一致)，下次谁加了真适配器忘改集合即测试失败。
 - **CI 恢复为可绿(自 2026-07-16 起每次运行都失败的三处基础设施债)**：`quality` 与 `mermaid` 两个 job 一直红,且因失败发生在 `ruff format` 步骤而掩盖了下游步骤的问题,逐层暴露后一并修掉。
   - **`quality` / 格式检查**：`dev` 附加组声明 `ruff>=0.6` 无上界,本地 venv 停在 0.15.21 而 CI 每次拉最新(今解析到 0.16.0)。ruff 0.16 起会格式化 Markdown 内的 Python 代码块,于是 `ruff format --check .` 从 92 个文件扩到 127 个,判定 9 个 `docs/superpowers/**` 的 spec/plan 需重排。这些片段是示意性伪代码(刻意对齐注释、省略实现体),其一致性由文档一致性 CI 负责,故在 `pyproject.toml` 增 `[tool.ruff.format] exclude = ["**/*.md"]`,让格式化只作用于真实 Python 源码且不随 ruff 版本漂移。

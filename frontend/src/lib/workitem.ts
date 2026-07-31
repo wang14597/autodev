@@ -20,7 +20,22 @@ export const STATE_LABEL: Record<WorkItemState, string> = {
   FAILED: '失败',
 }
 
-const RUNNING_STATES: ReadonlySet<WorkItemState> = new Set(['INTAKE', 'TRIAGE', 'CONTEXT'])
+// Every stage the platform can actually execute, minus the resting states
+// (WAIT_HUMAN / DONE / FAILED) where polling would spin forever. Manual tempo
+// now routinely parks in DESIGN..SUBMIT_MR waiting for a single 「推进」 click —
+// the console must keep polling through those or a multi-minute stage looks dead
+// (POST /advance validates synchronously and returns before the stage finishes).
+const RUNNING_STATES: ReadonlySet<WorkItemState> = new Set([
+  'INTAKE',
+  'TRIAGE',
+  'CONTEXT',
+  'DESIGN',
+  'REVIEW',
+  'IMPL',
+  'ACCEPT',
+  'VERIFY',
+  'SUBMIT_MR',
+])
 
 /** True while the bounded driver is actively auto-advancing this WorkItem. */
 export function isRunning(state: WorkItemState): boolean {

@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from autodev.adapters.demo import (
     DemoContext,
     DemoDelivery,
@@ -102,6 +104,38 @@ def test_approve_resumes_high_risk_through_both_gates_to_done(tmp_path: Path) ->
     assert second.state is S.WAIT_HUMAN and second.pending_gate is GatePoint.MERGE_GATE
 
     svc.approve_workitem(wid, approved=True)
+    assert svc.get_workitem(wid).state is S.DONE
+
+
+def test_manual_tempo_high_risk_drives_through_both_gates_to_done_without_error(
+    tmp_path: Path,
+) -> None:
+    """回归(BLOCKER)：手动挡(shipped 默认 autonomy_enabled=False)下人一路点「继续」/
+    「推进」，最终应落到 DONE 且全程不抛异常。
+
+    `resume_target(GatePoint.MERGE_GATE, "proceed")` 是 `S.DONE`（终态）——手动挡下
+    `decide_workitem` 曾在 resume 落地终态后仍无条件提交 `step` runner，`step` 经
+    `ensure_advanceable` → `classify` 判定 TERMINAL 抛 `InvariantError`，把"人审后已
+    正常完成"误报成推进失败。`test_approve_resumes_high_risk_through_both_gates_to_done`
+    用 `autonomy_enabled=True`（自动挡走 `auto_drive`），从未走到这条路径；本用例专门
+    用手动挡把两个门(REVIEW_GATE / MERGE_GATE，加上手动挡特有的 CONTEXT_GATE)都走一遍。
+    """
+    svc = _demo_service(tmp_path)
+    pid = svc.create_project("demo-proj", "demo://repo")
+    wid = svc.create_workitem(pid, "delete the legacy credential tokens", autonomy_enabled=False)
+
+    for _ in range(20):
+        wi = svc.get_workitem(wid)
+        assert wi is not None
+        if wi.state is S.DONE:
+            break
+        if wi.state is S.WAIT_HUMAN:
+            svc.approve_workitem(wid, approved=True)  # 不得抛异常（含 MERGE_GATE→DONE 那一步）
+        else:
+            svc.advance_workitem(wid)  # 手动挡「推进」；不得抛异常
+    else:
+        pytest.fail("did not reach DONE within bounded manual-tempo loop")
+
     assert svc.get_workitem(wid).state is S.DONE
 
 
