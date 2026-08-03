@@ -379,9 +379,20 @@ git commit -m "fix(design): 回退重设计带上上一轮评审意见, 修掉�
 
 **Interfaces:**
 - Consumes: Task 1 的 `ReviewArtifact(..., final_plan_file)`；`ClaudeCodeRunner` 的 `run(prompt, cwd, permission_mode) -> str`
-- Produces:
-  - `parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]` —— 返回 `(approved, comments, body)`
-  - 适配器类 `ClaudeReviewAdapter(runner: Callable[[str, Path], str], autodev_home: Path, id_gen: Callable[[], str])`，方法 `review(design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact`
+- Produces（后续任务按这两个名字引用）：
+
+```python
+def parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]: ...   # (approved, comments, body)
+
+class ClaudeReviewAdapter:
+    def __init__(
+        self,
+        runner: Callable[[str, Path], str],
+        autodev_home: Path,
+        id_gen: Callable[[], str] = ...,
+    ) -> None: ...
+    def review(self, design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact: ...
+```
 
 - [ ] **Step 1: 写失败测试（解析）**
 
@@ -776,7 +787,7 @@ git commit -m "feat(adapters): ReviewPort 真实适配器 — 评审产出最终
 - Test: `tests/application/test_handlers_back.py`、`tests/webapp/test_demo_app.py`
 
 **Interfaces:**
-- Consumes: Task 1 的 `final_plan_file`；Task 3 的 `ClaudeReviewAdapter`
+- Consumes: Task 1 的 `final_plan_file`；Task 3 产出的评审适配器（类名见 Task 3 的 Produces 代码块）
 - Produces: `IMPLEMENTED_STAGES` 含 `S.REVIEW`；生产组合根的 `reviewer` 为真实适配器
 
 - [ ] **Step 1: 写失败测试**
@@ -1136,7 +1147,7 @@ git commit -m "feat(frontend): 「最终方案」面板 + 评审意见列表"
 - Test: `pytest -q tests/docs`
 
 **Interfaces:**
-- Consumes: Task 1-5 全部落地后的真实符号名（此时 `ClaudeReviewAdapter` 已存在，可在文档正文行内反引号里引用）
+- Consumes: Task 1-5 全部落地后的真实符号名（此时评审适配器类已存在于 `src/autodev`，可在文档正文行内反引号里引用而不触发伪造符号检查）
 - Produces: 无
 
 - [ ] **Step 1: 写 CHANGELOG 条目**
@@ -1152,7 +1163,12 @@ git commit -m "feat(frontend): 「最终方案」面板 + 评审意见列表"
 
 `ROADMAP.md` 三处：
 
-1. 切片 2 适配器表的 `**ReviewPort**` 行，状态由 `⬜ 假` 改为 `✅ 真实已实现（`ClaudeReviewAdapter`）且已接入组合根`，落点列写 `已产出最终方案 Markdown 文档，持久化到 `~/.autodev``。
+1. 切片 2 适配器表里评审端口那一行，状态与落点改成：
+
+```markdown
+| **ReviewPort** | 对 DesignProposal 做方案评审并产出最终方案 | ✅ 真实已实现（`ClaudeReviewAdapter`）**且已接入组合根** | 已产出最终方案 Markdown 文档，持久化到 `~/.autodev` |
+```
+
 2. 「核心工作」列表里 `◐ Review / Execution 两个真实适配器待实现` 改为 `✅ Review 真实适配器已实现；◐ Execution 待实现`；`⬜ REVIEW 及之后阶段仍待接入` 改为 `⬜ IMPL 及之后阶段仍待接入`。
 3. 全文搜 `止于 REVIEW`，改为 `止于 IMPL`；搜 `REVIEW 起为抛错桩` 改为 `IMPL 起为抛错桩`。第 16 行的切片 2 状态括注 `（Workspace/Context/Triage/Design 已落地）` 补上 `/Review`。
 
