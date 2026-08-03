@@ -152,7 +152,10 @@ export function WorkItemDetailPage() {
       )}
 
       {detail.review && (
-        <>
+        <section className={styles.section}>
+          <p className={styles.sectionTitle}>
+            {detail.review.approved ? '评审意见' : '评审未通过'}
+          </p>
           {detail.review.final_plan_file && (
             <BriefDocument
               title="最终方案"
@@ -160,8 +163,8 @@ export function WorkItemDetailPage() {
               path={detail.review.final_plan_file}
             />
           )}
-          <ReviewComments comments={detail.review.comments} />
-        </>
+          <ReviewComments comments={detail.review.comments} approved={detail.review.approved} />
+        </section>
       )}
 
       {detail.failure && <FailurePanel reason={detail.failure.reason} />}

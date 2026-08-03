@@ -48,10 +48,17 @@ class ClaudeReviewAdapter:
 
     def review(self, design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact:
         raw = self._run_review(design, context)
-        approved, comments, body = self._parse(raw)
-        path = self._persist(context, body)
+        approved, comments, body = parse_review_output(raw)
+        if not approved:
+            # 判回退没有终稿可言：不落盘、不返回指针，无论模型是否仍附了正文。
+            return ReviewArtifact(approved, comments, final_plan_file="")
+        if not body:
+            raise StageError(FailureKind.LOGIC, "评审判定通过但未产出最终方案正文")
+        path = self._persist(design, context, body)
         return ReviewArtifact(approved, comments, final_plan_file=str(path))
 ```
+
+核心不变式：**`final_plan_file` 非空 ⟺ 评审通过**。判回退（`approved=False`）一律返回空指针、且绝不落盘——即使模型仍附了一份正文；被否理由完全由 `comments` 承载。这不是实现细节，是下游据以判断"这是不是权威终稿"的唯一真值来源：若允许"判回退但仍落盘/返回非空指针"的组合存在，下游就得同时看 `approved` 与指针两个字段才能确认终稿身份，多一次判断就多一次把半成品当终稿的风险。
 
 - **提示词**：把 `context.context_file` 与 `design.design_file` 的**绝对路径**写进 prompt（不注入内容，由 CLI 自行读取，与 Design 一致），要求：读两份文档 → 只读核对真实代码（方案里提到的文件是否存在、接口签名是否如其所述、是否与现有架构冲突、是否违反项目约定）→ 输出最终方案。明确要求**优先自救**：能在评审中补全/纠正的问题直接改进到终稿里，不要动辄打回。
 - **需求文本不单独传入**：`ReviewPort` 的方法只收方案与上下文两个产物，签名里没有 `Requirement`。这不是缺陷——需求已写在方案文档的头部与上下文文档里，评审员读那两份即可。**因此落盘头部也不能写需求**（下一条）。
@@ -69,17 +76,24 @@ REVIEW: APPROVED
 （以下为最终方案正文，含末尾「## 评审说明」小节）
 ```
 
-`REVIEW: BLOCKED` 时以 `- blocking:` 行给出打回理由。解析规则：
+`REVIEW: BLOCKED` 时以 `- blocking:` 行给出打回理由。
+
+**解析前先剥外层围栏**：模型偶尔会给**整份输出**套一层 ```` ```markdown ```` 围栏（与前端 `frontend/src/lib/markdown.ts` 的 `unwrapMarkdownFence` 是同一现象的两侧处理）。若不剥离，`splitlines()[0]` 恒是围栏行、不等于任何哨兵，`REVIEW: BLOCKED` 会被降级判成 `APPROVED`——本设计辛苦打通的回退通道因此恒不可达。规则严格且保守：仅当**去除首尾空白后**首行整体是 ```` ``` ```` 或 ```` ```<语言标记> ````、且末行整体是 ```` ``` ```` 时，才去掉这首尾两行；其余一律不动——正文内部真实的代码围栏（```` ```python ```` 等）既不在首行也不在末行，不受影响。
+
+解析规则：
 
 | 输入形态 | 判定 |
 |---|---|
-| 首行 `REVIEW: APPROVED` | `approved=True`，首个 `---` 之后为正文 |
+| 首行 `REVIEW: APPROVED` | `approved=True`，紧邻哨兵前导块内的分隔符 `---` 之后为正文 |
 | 首行 `REVIEW: BLOCKED` | `approved=False` |
-| 首行是哨兵但**没有** `---` | 哨兵行与意见行之后的剩余全部当正文（缺分隔符不算格式错误） |
+| 首行是哨兵，前导块内没有紧邻的 `---`，且全文（含正文深处）也没有任何 `---` | 无分隔符不算格式错误：最多只认领紧跟哨兵的**一条**前导意见行，其余原样归入正文 |
+| 首行是哨兵，前导块内没有紧邻的 `---`，但**正文深处**存在 `---`（如 `## 风险与取舍` 小节的 Markdown 水平线——提示词本就要求这个小节） | 深处那条 `---` 不可信、不当真分隔符：不再猜测任何前导行是意见行，整段原样归入正文、`comments` 为空 |
 | 首行不是哨兵 | **降级**：`approved=True`，整份输出当正文 |
 | `approved=True` 但正文 strip 后为空 | 抛 `StageError`（LOGIC）——空方案绝不交下游 |
 
-comments 的采集与 `approved` 无关：扫描哨兵与 `---` 之间的 `- blocking:` / `- suggestion:` 行，**保留前缀原样**收进 `comments`，让 UI 与人一眼看出哪条是拦路的、哪条只是建议。BLOCKED 且正文为空不报错——反正要回退重设计，正文没有用处。
+"分隔符是否存在"的识别范围**限定在紧跟哨兵的前导块内**：从哨兵之后逐行扫描，只跨过空行与 `- blocking:` / `- suggestion:` 意见行，遇到第一个既非空行也非意见行的行——若它整体是 `---` 才认定为真分隔符（其前的意见行悉数采信为 `comments`，其后原样整体作为正文，不再逐行判意见行）；否则该行即正文起点。这样正文深处偶然出现的水平线永远不会被误认成分隔符，也不会因为正文首行恰好长得像 `- suggestion: ...` 列表项就被误吞进 comments、从终稿里静默丢失。
+
+comments 的采集与 `approved` 无关：**保留前缀原样**收进 `comments`，让 UI 与人一眼看出哪条是拦路的、哪条只是建议。BLOCKED 且正文为空不报错——反正要回退重设计，正文没有用处。
 
 降级方向是有意选的：误判成通过的代价是多走一次 `REVIEW_GATE` 人审；误判成回退的代价是烧掉一次 `RetryPolicy` 的 `CAP` 配额并重跑一次数分钟的 DESIGN。前者明显更轻。
 

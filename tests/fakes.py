@@ -86,7 +86,7 @@ class FakeReview:
         self.approved = approved
 
     def review(self, design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact:
-        return ReviewArtifact(self.approved, () if self.approved else ("rejected",))
+        return ReviewArtifact(self.approved, () if self.approved else ("- blocking: rejected",))
 
 
 class FakeExecution:

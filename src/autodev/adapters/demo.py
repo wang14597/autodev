@@ -1,7 +1,8 @@
 """确定性演示适配器 —— 仅供独立演示组合根 / agent-browser E2E 使用。
 
 铁律合规：这些是端口协议的**确定性**实现，无网络、无 AI、无外部 SDK，放 `adapters/`。
-生产组合根（`webapp/config.py`）**绝不**注入它们——生产对 DESIGN 及之后仍用抛错桩
+生产组合根（`webapp/config.py`）**绝不**注入它们——生产的分诊 / 方案设计 / 方案评审
+已是真实适配器，仅 IMPL 及之后（executor / verifier / delivery）仍用抛错桩
 （`UnavailableStage`）。演示适配器让控制台可完整驱动生命周期，从而可端到端验证
 真实的 `TriagePort` 分诊逻辑 / `GatePolicy`（后者在演示里用真实实现，正是被测对象）。
 `FakeTriage` 用确定性关键词启发式替代真实 LLM 分诊，供测试与浏览器 E2E 稳定复现。
