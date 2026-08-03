@@ -201,7 +201,19 @@ class DemoDesign:
 
 class DemoReview:
     def review(self, design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact:
-        return ReviewArtifact(approved=True, comments=("（演示）评审通过",))
+        path = Path(context.context_file).parent / "final-plan-demo.md"
+        path.write_text(
+            "# 最终方案（演示）\n\n"
+            f"- 初稿: {design.design_file}\n\n"
+            "## 方案概述\n\n（演示）沿用初稿思路\n\n"
+            "## 评审说明\n\n（演示）核对无误，未作改动\n",
+            encoding="utf-8",
+        )
+        return ReviewArtifact(
+            approved=True,
+            comments=("- suggestion: （演示）评审通过",),
+            final_plan_file=str(path),
+        )
 
 
 class DemoExecution:
