@@ -111,6 +111,7 @@ comments 的采集与 `approved` 无关：扫描哨兵与 `---` 之间的 `- blo
 |---|---|
 | `adapters/review_claude.py` | 新增评审适配器（类名见 §3 代码块） |
 | `domain/artifacts.py` | `ReviewArtifact` 加 `final_plan_file: str = ""` |
+| `adapters/sqlite_repository.py` | 新字段的序列化与反序列化（旧行缺该键时兜底空串），否则重启后指针丢失 |
 | `domain/ports.py` | `DesignPort` 方法加 `prior_review` 可选入参 |
 | `application/handlers.py` | `handle_impl` 取权威方案；`handle_design` 透传上一轮评审 |
 | `adapters/design_claude.py` | 接受并使用 `prior_review` |
