@@ -183,7 +183,12 @@ class DemoContext:
 
 
 class DemoDesign:
-    def propose(self, requirement: Requirement, context: ContextArtifact) -> DesignArtifact:
+    def propose(
+        self,
+        requirement: Requirement,
+        context: ContextArtifact,
+        prior_review: ReviewArtifact | None = None,
+    ) -> DesignArtifact:
         path = Path(context.context_file).parent / "design-demo.md"
         path.write_text(
             f"# 实现方案\n\n## 方案概述\n\n（演示方案）实现：{requirement.goal}\n\n"

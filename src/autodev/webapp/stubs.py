@@ -28,7 +28,12 @@ _MESSAGE = "stage not yet implemented"
 class UnavailableStage:
     """DesignPort ∪ ReviewPort ∪ ExecutionPort ∪ VerificationPort ∪ DeliveryPort 的桩实现。"""
 
-    def propose(self, requirement: Requirement, context: ContextArtifact) -> DesignArtifact:
+    def propose(
+        self,
+        requirement: Requirement,
+        context: ContextArtifact,
+        prior_review: ReviewArtifact | None = None,
+    ) -> DesignArtifact:
         raise StageError(FailureKind.FATAL, _MESSAGE)
 
     def review(self, design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact:

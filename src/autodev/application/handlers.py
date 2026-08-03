@@ -9,6 +9,7 @@ from autodev.domain.artifacts import (
     AcceptanceArtifact,
     ContextArtifact,
     DesignArtifact,
+    ReviewArtifact,
     TriageArtifact,
 )
 from autodev.domain.enums import (
@@ -81,7 +82,11 @@ def handle_context(work_item: WorkItem, ctx: StageContext, now: datetime) -> Sta
 
 def handle_design(work_item: WorkItem, ctx: StageContext, now: datetime) -> StageOutcome:
     context = cast(ContextArtifact, work_item.artifacts["context"])
-    artifact = ctx.designer.propose(work_item.requirement, context)
+    # 回退重设计时把上一轮评审意见带回设计员：否则同样输入产同样方案、招来同样打回，
+    # 烧完 RetryPolicy 的 CAP 后收敛 FAILED（这条回退路径此前不可达，故从未暴露）。
+    prior = work_item.artifacts.get("review")
+    prior_review = prior if isinstance(prior, ReviewArtifact) else None
+    artifact = ctx.designer.propose(work_item.requirement, context, prior_review)
     return StageOutcome.ok("design", artifact)
 
 
