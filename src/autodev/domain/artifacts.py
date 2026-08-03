@@ -36,6 +36,9 @@ class DesignArtifact:
 class ReviewArtifact:
     approved: bool
     comments: tuple[str, ...]
+    # 评审产出的最终方案文档路径（下游 IMPL 的权威输入）。加默认值向后兼容：
+    # 旧持久化产物与演示/假适配器无需同步改造。判定"无法自救"而回退重设计时为空串。
+    final_plan_file: str = ""
 
 
 @dataclass(frozen=True)
