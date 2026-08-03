@@ -6,7 +6,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from autodev.domain.artifacts import ContextArtifact, DesignArtifact, TriageArtifact
+from autodev.domain.artifacts import (
+    ContextArtifact,
+    DesignArtifact,
+    ReviewArtifact,
+    TriageArtifact,
+)
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
@@ -109,6 +114,20 @@ def view_detail(
             d_md = ""
         design = {"markdown": d_md, "design_file": d_art.design_file}
 
+    review: dict[str, object] | None = None
+    if "review" in wi.artifacts:
+        r_art = cast(ReviewArtifact, wi.artifacts["review"])
+        try:
+            r_md = read_text(r_art.final_plan_file) if r_art.final_plan_file else ""
+        except OSError:
+            r_md = ""
+        review = {
+            "markdown": r_md,
+            "final_plan_file": r_art.final_plan_file,
+            "approved": r_art.approved,
+            "comments": list(r_art.comments),
+        }
+
     failure: dict[str, str] | None = None
     if wi.state is S.FAILED:
         failure = {"reason": wi.history[-1].reason if wi.history else ""}
@@ -128,6 +147,7 @@ def view_detail(
     detail["stages"] = stage_views(wi, implemented)
     detail["context"] = context
     detail["design"] = design
+    detail["review"] = review
     detail["failure"] = failure
     detail["triage"] = triage
     detail["pending_gate"] = wi.pending_gate.name if wi.pending_gate else None

@@ -6,6 +6,7 @@ import { EmptyStage } from '../components/EmptyStage'
 import { FailurePanel } from '../components/FailurePanel'
 import { LifelinePipeline } from '../components/LifelinePipeline'
 import { Notice } from '../components/Notice'
+import { ReviewComments } from '../components/ReviewComments'
 import { StatusBadge } from '../components/StatusBadge'
 import { TriageBadge } from '../components/TriageBadge'
 import { useAdvanceWorkItem } from '../hooks/useAdvanceWorkItem'
@@ -148,6 +149,19 @@ export function WorkItemDetailPage() {
           markdown={detail.design.markdown}
           path={detail.design.design_file}
         />
+      )}
+
+      {detail.review && (
+        <>
+          {detail.review.final_plan_file && (
+            <BriefDocument
+              title="最终方案"
+              markdown={detail.review.markdown}
+              path={detail.review.final_plan_file}
+            />
+          )}
+          <ReviewComments comments={detail.review.comments} />
+        </>
       )}
 
       {detail.failure && <FailurePanel reason={detail.failure.reason} />}

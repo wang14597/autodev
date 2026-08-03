@@ -349,3 +349,37 @@ def test_next_stage_still_projects_label_for_live_stage() -> None:
     detail = view_detail(wi, lambda _p: "")
 
     assert detail["next_stage"] == "方案"
+
+
+# --- Task 5：view_detail 暴露 review 字段（final_plan_file + comments）---
+
+
+def test_view_detail_projects_review_final_plan():
+    from autodev.domain.artifacts import ReviewArtifact
+
+    wi = _work_item(S.REVIEW)
+    wi.add_artifact(
+        "review",
+        ReviewArtifact(True, ("- suggestion: 补个测试",), final_plan_file="/x/final-plan-r1.md"),
+    )
+    detail = view_detail(wi, lambda p: "## 方案概述\n\n最终方案")
+    review = detail["review"]
+    assert review["final_plan_file"] == "/x/final-plan-r1.md"
+    assert review["approved"] is True
+    assert review["comments"] == ["- suggestion: 补个测试"]
+    assert "最终方案" in review["markdown"]
+
+
+def test_view_detail_review_markdown_empty_when_file_unreadable():
+    from autodev.domain.artifacts import ReviewArtifact
+
+    def boom(path: str) -> str:
+        raise OSError("EPERM")
+
+    wi = _work_item(S.REVIEW)
+    wi.add_artifact("review", ReviewArtifact(True, (), final_plan_file="/x/f.md"))
+    assert view_detail(wi, boom)["review"]["markdown"] == ""
+
+
+def test_view_detail_review_is_none_without_artifact():
+    assert view_detail(_work_item(S.CONTEXT), lambda p: "")["review"] is None
