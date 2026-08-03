@@ -71,6 +71,77 @@ def test_parse_no_separator_does_not_swallow_body_line_that_looks_like_comment()
     assert body == "- suggestion: 这其实是正文的第一条列表项\n\n更多正文"
 
 
+def test_parse_strips_outer_markdown_fence_before_sentinel_check():
+    """最要紧的一项：模型给整份输出套 ```markdown 围栏时，首行哨兵必须仍能被识别。
+
+    退回修复前的实现：splitlines()[0] 会是 "```markdown"，不等于任何哨兵，导致整个
+    BLOCKED 判决被降级为 APPROVED —— 回退重设计的通道因此恒不可达。这是本项的核心断言。
+    """
+    approved, comments, body = parse_review_output(
+        "```markdown\nREVIEW: BLOCKED\n- blocking: 需求自相矛盾\n---\n```"
+    )
+    assert approved is False
+    assert comments == ("- blocking: 需求自相矛盾",)
+
+
+def test_parse_strips_outer_fence_leaves_no_fence_markers_in_body():
+    """套围栏 + APPROVED + 正文 → 正文里不残留围栏标记（首尾两行被剥掉，不是整体保留）。"""
+    approved, comments, body = parse_review_output(
+        "```markdown\nREVIEW: APPROVED\n---\n## 方案概述\n\n改 app.py\n```"
+    )
+    assert approved is True
+    assert body == "## 方案概述\n\n改 app.py"
+    assert "```" not in body
+
+
+def test_parse_strips_outer_fence_preserves_real_internal_code_fence():
+    """正文内部真实的代码围栏（```python 等）不受外层剥离影响，原样保留。"""
+    approved, comments, body = parse_review_output(
+        "```markdown\n"
+        "REVIEW: APPROVED\n---\n"
+        "## 方案概述\n\n示例:\n\n```python\nprint(1)\n```\n\n更多正文\n"
+        "```"
+    )
+    assert approved is True
+    assert "```python\nprint(1)\n```" in body
+
+
+def test_parse_without_outer_fence_behaves_unchanged():
+    """无外层围栏时行为完全不变（对照组）。"""
+    approved, comments, body = parse_review_output(
+        "REVIEW: APPROVED\n---\n## 方案概述\n\n改 app.py\n"
+    )
+    assert approved is True
+    assert body == "## 方案概述\n\n改 app.py"
+
+
+def test_parse_separator_proxy_does_not_swallow_body_line_when_real_separator_missing():
+    """Critical 2（评审打回）：提示词要求正文含「## 风险与取舍」，正文里出现 Markdown 水平线
+    `---` 完全正常。当模型漏写约定分隔符、而正文深处恰好有一条 `---`（如该小节的分隔线）时，
+    旧实现用「输出里是否存在 ---」代理判断"有没有分隔符"，会误走贪婪分支；若紧跟哨兵之后的
+    正文首行又恰好是 `- suggestion: ...` 形态的列表项，该行会被吞进 comments、从持久化终稿里
+    静默消失。
+
+    修复后：分隔符的识别范围限定在紧跟哨兵的前导块内——前导块内没有紧邻的 `---`，即便全文
+    深处存在 `---`，也不再猜测任何前导行是意见行，整段原样归入正文，一行不丢。
+    """
+    approved, comments, body = parse_review_output(
+        "REVIEW: APPROVED\n"
+        "- suggestion: 这其实是正文的第一条列表项\n"
+        "\n"
+        "## 风险与取舍\n"
+        "正文内容\n"
+        "---\n"
+        "结尾内容\n"
+    )
+    assert approved is True
+    assert comments == ()
+    assert "这其实是正文的第一条列表项" in body
+    assert body == (
+        "- suggestion: 这其实是正文的第一条列表项\n\n## 风险与取舍\n正文内容\n---\n结尾内容"
+    )
+
+
 def test_parse_without_sentinel_degrades_to_approved():
     """首行不是哨兵 → 降级为通过、整份当正文。
 

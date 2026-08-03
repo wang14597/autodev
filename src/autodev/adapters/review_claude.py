@@ -12,6 +12,7 @@ REVIEW 在本平台是"精炼"而非"判决"：读上下文与方案两份文档
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -24,6 +25,26 @@ _APPROVED = "REVIEW: APPROVED"
 _BLOCKED = "REVIEW: BLOCKED"
 _SEPARATOR = "---"
 _COMMENT_PREFIXES = ("- blocking:", "- suggestion:")
+# 整份输出被套一层围栏时的首行形态：``` 或 ```<语言标记>（无其余字符）。
+_FENCE_FIRST_LINE = re.compile(r"^```[^\s`]*$")
+
+
+def _strip_outer_fence(text: str) -> str:
+    """剥掉模型给整份输出套的最外层 ``` / ```<语言标记> 围栏（如 ```markdown）。
+
+    本仓库已确认模型会时不时给整份评审输出套一层 ```markdown 围栏（前端
+    `frontend/src/lib/markdown.ts` 的 `unwrapMarkdownFence` 正是为同一现象写的）。
+    若不在解析前剥离，`splitlines()[0]` 恒是围栏行、不等于任何哨兵，`REVIEW: BLOCKED`
+    永远无法被识别。
+
+    规则严格且保守：仅当首行整体是 ``` 或 ```<语言标记>、且末行整体是 ``` 时才剥离
+    首尾两行；其余一切原样保留——尤其是正文内部真实的代码围栏（```python 等），
+    它们既不在首行也不在末行，不受影响。
+    """
+    lines = text.splitlines()
+    if len(lines) >= 2 and _FENCE_FIRST_LINE.match(lines[0].strip()) and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1])
+    return text
 
 
 def parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]:
@@ -39,15 +60,20 @@ def parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]:
     comments 的采集与 approved 无关，且**保留 `- blocking:` / `- suggestion:` 前缀原样**，
     让 UI 与人一眼看出哪条是拦路的、哪条只是建议。
 
-    有 `---` 分隔符时，其前的所有 `- blocking:` / `- suggestion:` 前缀行都贪婪收作意见行——
-    此时分隔符本身就是"意见行到此为止"的显式边界，贪婪没有歧义。但**没有分隔符**时贪婪
-    前缀匹配是危险的：正文的第一行完全可能长得像 Markdown 列表项、恰好撞上同样的前缀
-    （如 `- suggestion: 这是我方案里的一条建议列表项`），贪婪匹配会把它错吞进 comments，
-    从持久化的最终方案正文里静默丢失一整行且不报错。没有分隔符就没有可靠边界能分辨
-    "后续意见行" 与 "长得像列表项的正文首行"，因此保守到只认领紧跟哨兵的**第一条**非空行
-    （若匹配前缀），其余一律原样归入正文——宁可漏判一条真实意见，也绝不丢正文。
+    分隔符的识别范围**限定在紧跟哨兵的前导块内**：从哨兵之后逐行扫描，只跨过空行与
+    `- blocking:` / `- suggestion:` 意见行，找到第一个既非空行也非意见行的行——若它整体是
+    `---`，那就是真分隔符（其前的意见行悉数采信，其后原样整体作为正文）。
+
+    若前导块里没能找到紧邻的分隔符，则分两种情况：
+    - **全文（含正文深处）都没有任何 `---`**：安全场景，退回保守的
+      `_collect_leading_comment`——只认领紧跟哨兵的第一条意见行，其余原样归入正文
+      （宁可漏判一条真实意见，也绝不丢正文行）。
+    - **全文深处存在 `---`**（提示词要求正文含 `## 风险与取舍` 这类小节，出现 Markdown
+      水平线完全正常）：这条 `---` 不是紧邻前导块的真分隔符，不可信——不再对任何前导行
+      猜测是否为意见行，整段原样归入正文、`comments` 为空。否则若正文首行恰好长得像
+      `- suggestion: ...` 列表项，会被误当意见行吞掉、从持久化终稿里静默消失。
     """
-    text = raw.strip()
+    text = _strip_outer_fence(raw.strip()).strip()
     lines = text.splitlines()
     first = lines[0].strip() if lines else ""
     if first not in (_APPROVED, _BLOCKED):
@@ -55,27 +81,28 @@ def parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]:
 
     approved = first == _APPROVED
     rest = lines[1:]
+
+    i = 0
+    while i < len(rest):
+        stripped = rest[i].strip()
+        if not stripped or stripped.startswith(_COMMENT_PREFIXES):
+            i += 1
+            continue
+        break
+
+    if i < len(rest) and rest[i].strip() == _SEPARATOR:
+        comment_lines = tuple(
+            ln.strip() for ln in rest[:i] if ln.strip().startswith(_COMMENT_PREFIXES)
+        )
+        body = "\n".join(rest[i + 1 :]).strip()
+        return approved, comment_lines, body
+
     if not any(ln.strip() == _SEPARATOR for ln in rest):
         leading_comment, body = _collect_leading_comment(rest)
         return approved, leading_comment, body
 
-    comment_lines: list[str] = []
-    i = 0
-    while i < len(rest):
-        stripped = rest[i].strip()
-        if stripped == _SEPARATOR:
-            i += 1
-            break
-        if stripped.startswith(_COMMENT_PREFIXES):
-            comment_lines.append(stripped)
-            i += 1
-            continue
-        if not stripped:
-            i += 1
-            continue
-        break
-    body = "\n".join(rest[i:]).strip()
-    return approved, tuple(comment_lines), body
+    # 深处存在 --- 但前导块内没有紧邻它：不可信，不猜任何前导行，整段原样归正文。
+    return approved, (), "\n".join(rest).strip()
 
 
 def _collect_leading_comment(lines: list[str]) -> tuple[tuple[str, ...], str]:
