@@ -38,6 +38,14 @@ def parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]:
 
     comments 的采集与 approved 无关，且**保留 `- blocking:` / `- suggestion:` 前缀原样**，
     让 UI 与人一眼看出哪条是拦路的、哪条只是建议。
+
+    有 `---` 分隔符时，其前的所有 `- blocking:` / `- suggestion:` 前缀行都贪婪收作意见行——
+    此时分隔符本身就是"意见行到此为止"的显式边界，贪婪没有歧义。但**没有分隔符**时贪婪
+    前缀匹配是危险的：正文的第一行完全可能长得像 Markdown 列表项、恰好撞上同样的前缀
+    （如 `- suggestion: 这是我方案里的一条建议列表项`），贪婪匹配会把它错吞进 comments，
+    从持久化的最终方案正文里静默丢失一整行且不报错。没有分隔符就没有可靠边界能分辨
+    "后续意见行" 与 "长得像列表项的正文首行"，因此保守到只认领紧跟哨兵的**第一条**非空行
+    （若匹配前缀），其余一律原样归入正文——宁可漏判一条真实意见，也绝不丢正文。
     """
     text = raw.strip()
     lines = text.splitlines()
@@ -46,24 +54,45 @@ def parse_review_output(raw: str) -> tuple[bool, tuple[str, ...], str]:
         return True, (), text
 
     approved = first == _APPROVED
-    comments: list[str] = []
-    i = 1
-    while i < len(lines):
-        stripped = lines[i].strip()
+    rest = lines[1:]
+    if not any(ln.strip() == _SEPARATOR for ln in rest):
+        leading_comment, body = _collect_leading_comment(rest)
+        return approved, leading_comment, body
+
+    comment_lines: list[str] = []
+    i = 0
+    while i < len(rest):
+        stripped = rest[i].strip()
         if stripped == _SEPARATOR:
             i += 1
             break
         if stripped.startswith(_COMMENT_PREFIXES):
-            comments.append(stripped)
+            comment_lines.append(stripped)
             i += 1
             continue
         if not stripped:
             i += 1
             continue
-        # 非空、非意见行、非分隔符 → 正文从这一行开始（缺 --- 不算格式错误）
         break
-    body = "\n".join(lines[i:]).strip()
-    return approved, tuple(comments), body
+    body = "\n".join(rest[i:]).strip()
+    return approved, tuple(comment_lines), body
+
+
+def _collect_leading_comment(lines: list[str]) -> tuple[tuple[str, ...], str]:
+    """无 `---` 时的保守取舍：最多认领紧跟哨兵的**一条**意见行，其余全部当正文。
+
+    见 `parse_review_output` docstring：没有分隔符就无法可靠区分"后续意见行"与
+    "长得像列表项的正文首行"。跳过哨兵后的前导空行，若第一条非空行匹配意见前缀，
+    仅收它一条为 comment，其后所有行（无论是否也长得像意见行）都原样并入正文。
+    """
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and lines[i].strip().startswith(_COMMENT_PREFIXES):
+        comment = lines[i].strip()
+        body = "\n".join(lines[i + 1 :]).strip()
+        return (comment,), body
+    return (), "\n".join(lines).strip()
 
 
 class ClaudeReviewAdapter:
@@ -82,12 +111,14 @@ class ClaudeReviewAdapter:
     def review(self, design: DesignArtifact, context: ContextArtifact) -> ReviewArtifact:
         raw = self._runner(self._prompt(design, context), Path(context.workspace_location))
         approved, comments, body = parse_review_output(raw)
-        if approved and not body:
+        if not approved:
+            # 判回退没有终稿可言：无论模型是否仍给了正文都不落盘。不变式：
+            # final_plan_file 非空 ⟺ 评审通过——下游一个真值判断就不会把判了回退的
+            # 半成品当权威终稿。被否理由由 comments 承载，不需要那份正文。
+            return ReviewArtifact(approved, comments, final_plan_file="")
+        if not body:
             # 通过却没给方案：空方案绝不交下游。LOGIC → 回退重设计。
             raise StageError(FailureKind.LOGIC, "评审判定通过但未产出最终方案正文")
-        if not body:
-            # 判回退时没有终稿可言，不落空文件；下游兜底退回 DESIGN 初稿。
-            return ReviewArtifact(approved, comments, final_plan_file="")
         path = self._persist(design, context, body)
         return ReviewArtifact(approved, comments, final_plan_file=str(path))
 

@@ -95,6 +95,9 @@ def handle_review(work_item: WorkItem, ctx: StageContext, now: datetime) -> Stag
     design = cast(DesignArtifact, work_item.artifacts["design"])
     review = ctx.reviewer.review(design, context)
     if not review.approved:
+        # 被否的评审结论本身是产物：必须落盘，否则回退重设计时 handle_design 取不到
+        # 上一轮意见（engine._on_failure 不落产物），prior_review 通道永远是 None。
+        work_item.add_artifact("review", review)
         return StageOutcome.fail(FailureKind.LOGIC, f"review rejected: {review.comments}")
     decision = ctx.gate_policy.decide(work_item, GatePoint.REVIEW_GATE)
     if decision.needs_human:
