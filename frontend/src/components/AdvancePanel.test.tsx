@@ -50,4 +50,24 @@ describe('AdvancePanel', () => {
     )
     expect(b).toBeEmptyDOMElement()
   })
+
+  it('取值不认识时闭合，绝不摆出可点按钮', () => {
+    // 后端版本不一致(旧后端不投影 next_action)时运行时就是 undefined ——
+    // `request` 的 `as T` 不做校验，拦不住，所以这是真实可达的边界，不是假想。
+    // 实测过:旧后端 + 新前端会渲染出一个可点的「推进下一步」+ 占位文案「下一阶段」。
+    const unknown = undefined as unknown as 'advance'
+    const { container } = render(
+      <AdvancePanel nextAction={unknown} nextStage={null} onAdvance={vi.fn()} isPending={false} />,
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('advance 但拿不到阶段名时闭合，不渲染占位文案', () => {
+    const { container } = render(
+      <AdvancePanel nextAction="advance" nextStage={null} onAdvance={vi.fn()} isPending={false} />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByText(/下一阶段/)).not.toBeInTheDocument()
+  })
 })
