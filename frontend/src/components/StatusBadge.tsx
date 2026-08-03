@@ -9,6 +9,9 @@ function toneFor(state: WorkItemState): Tone {
   if (state === 'FAILED') return 'error'
   if (state === 'WAIT_HUMAN') return 'running'
   if (isRunning(state)) return 'running'
+  // Defensive fallback only — every current WorkItemState is already handled
+  // above (isRunning now covers DESIGN..SUBMIT_MR), so this branch is presently
+  // unreachable. Kept for forward-compatibility with states added later.
   return 'muted'
 }
 

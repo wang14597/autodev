@@ -1,9 +1,9 @@
 # src/autodev/webapp/service.py
-"""WorkItem 控制台应用服务：创建 + 有界自动驱动(止于 REVIEW) + 查询。
+"""WorkItem 控制台应用服务：创建 + 驱动(自动/单步) + 查询。
 
-有界驱动只允许引擎跑 INTAKE/TRIAGE/CONTEXT/DESIGN 四个已实现阶段；一旦 WorkItem 转移到
-REVIEW(或任何未实现阶段) 或进入终态/挂起态，驱动循环立即停止，绝不会调用到
-REVIEW 及之后的桩端口(见 stubs.py)。
+驱动边界(`implemented_stages`, 生产默认 `IMPLEMENTED_STAGES`)与停因判定的单一真源见
+`drive.py`；本模块只负责按场景选用 `auto_drive`(自动挡/建工作项收集段)或
+`step`(手动挡人工单步推进)，绝不会调用到未实现阶段之后的桩端口(见 stubs.py)。
 """
 
 from __future__ import annotations
@@ -22,24 +22,17 @@ from autodev.domain.ports import ProjectRepository, WorkItemRepository, Workspac
 from autodev.domain.project import Project
 from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement, WorkspaceHandle
 from autodev.domain.work_item import WorkItem
+from autodev.webapp.drive import (
+    IMPLEMENTED_STAGES,
+    DriveStop,
+    auto_drive,
+    classify,
+    ensure_advanceable,
+    step,
+)
 from autodev.webapp.projects import ProjectRegistry
 
-# 有界驱动允许自动跑的阶段集合：生产默认仅到 DESIGN 为止，绝不进入 REVIEW 及之后。
-RUN: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT, S.DESIGN})
-# 全生命周期驱动集合：仅供演示组合根（下游为确定性演示适配器，不触达抛错桩）。
-FULL_DRIVE: frozenset[S] = frozenset(
-    {
-        S.INTAKE,
-        S.TRIAGE,
-        S.CONTEXT,
-        S.DESIGN,
-        S.REVIEW,
-        S.IMPL,
-        S.ACCEPT,
-        S.VERIFY,
-        S.SUBMIT_MR,
-    }
-)
+_Driver = Callable[[WorkItemRepository, Engine, WorkItemId, frozenset[S]], DriveStop | None]
 
 
 def _default_clock() -> datetime:
@@ -55,28 +48,6 @@ class SyncExecutor:
 
     def submit(self, fn: Callable[[], None]) -> None:
         fn()
-
-
-def _bounded_drive(
-    repo: WorkItemRepository,
-    engine: Engine,
-    work_item_id: WorkItemId,
-    run_states: frozenset[S] = RUN,
-) -> None:
-    """有界自动驱动循环：只在 `run_states` 内推进，越界即停。
-
-    生产默认 `run_states=RUN`（止于 REVIEW，绝不越界调用 REVIEW 及之后的桩端口）；
-    演示组合根传 `FULL_DRIVE` 跑完全生命周期（下游为确定性演示适配器）。抽成自由函数
-    供 WorkItemConsoleService/ProjectConsoleService 共用。
-    """
-    while True:
-        try:
-            work_item = repo.get(work_item_id)
-        except KeyError:
-            return
-        if not work_item.is_runnable() or work_item.state not in run_states:
-            return
-        engine.advance(work_item)
 
 
 class WorkItemConsoleService:
@@ -131,7 +102,7 @@ class WorkItemConsoleService:
         return items
 
     def _drive(self, work_item_id: WorkItemId) -> None:
-        _bounded_drive(self._repo, self._engine, work_item_id)
+        auto_drive(self._repo, self._engine, work_item_id)
 
 
 class ProjectConsoleService:
@@ -152,7 +123,7 @@ class ProjectConsoleService:
         id_gen_project: Callable[[], ProjectId] = ProjectId.new,
         id_gen_work: Callable[[], WorkItemId] = WorkItemId.new,
         dial_factory: Callable[[str], AutonomyDial] = lambda _name: AutonomyDial.all_human(),
-        run_states: frozenset[S] = RUN,
+        implemented_stages: frozenset[S] = IMPLEMENTED_STAGES,
     ) -> None:
         self._project_repo = project_repo
         self._work_repo = work_repo
@@ -164,9 +135,20 @@ class ProjectConsoleService:
         self._id_gen_project = id_gen_project
         self._id_gen_work = id_gen_work
         # dial_factory：按运行时 repo 名构造 AutonomyDial（生产默认全人审；演示传放行工厂）。
-        # run_states：驱动允许推进的阶段集合（生产默认 RUN 止于 REVIEW；演示传 FULL_DRIVE）。
+        # implemented_stages：本组合根下平台能执行的阶段集合（唯一真源，见 drive.py）。
+        # 三处消费：自动驱动边界、视图「待建设」标记、「推进」按钮可用性。
         self._dial_factory = dial_factory
-        self._run_states = run_states
+        self._implemented_stages = implemented_stages
+
+    @property
+    def implemented_stages(self) -> frozenset[S]:
+        """供路由投影使用——视图层据此标注「待建设」并计算 next_action。"""
+        return self._implemented_stages
+
+    def _run_driver(self, runner: _Driver, work_item_id: WorkItemId) -> None:
+        # Executor.submit 要求 Callable[[], None]；auto_drive/step 返回 DriveStop | None，
+        # 这里丢弃返回值以匹配签名（提交时是"fire and forget"，前端靠轮询取新状态）。
+        runner(self._work_repo, self._engine, work_item_id, self._implemented_stages)
 
     def create_project(self, name: str, repo_input: str, branch: str = "") -> str:
         if not name or not name.strip():
@@ -306,9 +288,7 @@ class ProjectConsoleService:
             autonomy_enabled=autonomy_enabled,
         )
         self._work_repo.save(work_item)
-        self._executor.submit(
-            lambda: _bounded_drive(self._work_repo, self._engine, work_item_id, self._run_states)
-        )
+        self._executor.submit(lambda: self._run_driver(auto_drive, work_item_id))
         return work_item_id.value
 
     def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
@@ -323,14 +303,39 @@ class ProjectConsoleService:
         except KeyError:
             return None
         if decision == "proceed":
-            self._executor.submit(
-                lambda: _bounded_drive(self._work_repo, self._engine, wid, self._run_states)
-            )
+            # 手动挡下，门禁的「继续」即视为"授权走这一步"——跑一个阶段就交还控制权，
+            # 免得为同一个意图点两下（先点「继续」再点「推进」）。自动挡照旧连续跑。
+            wi = self._work_repo.get(wid)
+            # resume 可能合法落在终态（如 MERGE_GATE 的 "proceed" → S.DONE）：这种情况下
+            # 不该再提交 runner —— step/auto_drive 会走 ensure_advanceable → classify →
+            # TERMINAL 抛 InvariantError，把"人审后已正常完成"误报成推进失败（曾在
+            # SyncExecutor 下把 200 变成 400，正是本分支要消灭的那类"合法停止被当错误"）。
+            stop = classify(wi, self._implemented_stages)
+            if stop is None or stop is DriveStop.MANUAL_HOLD:
+                runner = auto_drive if wi.autonomy_enabled else step
+                self._executor.submit(lambda: self._run_driver(runner, wid))
         return self.get_workitem(work_item_id)
 
     def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None:
         """向后兼容薄壳：True→proceed / False→reject，委托到 decide_workitem。"""
         return self.decide_workitem(work_item_id, "proceed" if approved else "reject")
+
+    def advance_workitem(self, work_item_id: str) -> WorkItem | None:
+        """人工单步推进一个阶段。
+
+        **校验同步、执行异步**：单个阶段可能跑数分钟（Claude Code 子进程），因此这里
+        只同步判定合法性（非法立即抛 `InvariantError` → 路由 409），真正推进交后台，
+        前端靠轮询取新状态。与 `decide_workitem` 同一模式。
+        """
+        wid = WorkItemId(work_item_id)
+        try:
+            wi = self._work_repo.get(wid)
+        except KeyError:
+            return None
+        # 准入规则只在 drive.py 定义一处；这里同步校验以立刻回 409，step 在后台再校验一次。
+        ensure_advanceable(wi, self._implemented_stages)
+        self._executor.submit(lambda: self._run_driver(step, wid))
+        return self.get_workitem(work_item_id)
 
     def list_workitems(self, project_id: str) -> list[WorkItem]:
         pid = ProjectId(project_id)

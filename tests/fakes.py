@@ -12,7 +12,7 @@ from autodev.domain.artifacts import (
     ReviewArtifact,
     VerificationArtifact,
 )
-from autodev.domain.enums import WorkspaceMode
+from autodev.domain.enums import TriageIntent, WorkspaceMode
 from autodev.domain.events import DomainEvent
 from autodev.domain.ids import WorkItemId
 from autodev.domain.value_objects import (
@@ -117,3 +117,45 @@ class RecordingPublisher:
 
     def publish(self, event: DomainEvent) -> None:
         self.events.append(event)
+
+
+def build_engine_with_fakes(repo, *, designer=None, full_fakes: bool = False):
+    """组装一个全假件 Engine，供驱动层测试使用。
+
+    默认 reviewer/executor/verifier/delivery 仍是抛错桩（`UnavailableStage`），匹配
+    生产组合根对 DESIGN 之后阶段的建设现状。`full_fakes=True` 时把这四个下游端口
+    换成真正工作的假件（`FakeReview`/`FakeExecution`/`FakeVerification`/
+    `FakeDelivery`），供需要真正跑过 REVIEW 及之后阶段的判别性测试使用——例如证伪
+    一个「循环直到非 MANUAL_HOLD 为止」的错误 `step` 实现：只有下游端口不抛错，
+    多跑一阶段才会产生可观测的差异。
+
+    triage 固定为 ACTIONABLE 意图，避免启发式对短 goal 判成 CONSULTATION 而提前 finish。
+    """
+    from datetime import UTC, datetime
+
+    from autodev.adapters.event_bus import InMemoryEventBus
+    from autodev.application.context import StageContext
+    from autodev.application.engine import Engine
+    from autodev.domain.policies import GatePolicy
+    from autodev.webapp.stubs import UnavailableStage
+
+    if full_fakes:
+        reviewer: object = FakeReview()
+        executor: object = FakeExecution()
+        verifier: object = FakeVerification()
+        delivery: object = FakeDelivery()
+    else:
+        stub = UnavailableStage()
+        reviewer = executor = verifier = delivery = stub
+    ctx = StageContext(
+        FakeWorkspace(),
+        FakeContext(),
+        designer or FakeDesign(),
+        reviewer,
+        executor,
+        verifier,
+        delivery,
+        FakeTriage(intent=TriageIntent.ACTIONABLE),
+        GatePolicy(),
+    )
+    return Engine(repo, InMemoryEventBus(), ctx, clock=lambda: datetime.now(UTC))

@@ -18,6 +18,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from autodev.domain.enums import WorkflowState as S
+from autodev.domain.errors import InvariantError
 from autodev.domain.project import Project
 from autodev.domain.work_item import WorkItem
 from autodev.webapp.views import view_detail, view_project, view_project_detail
@@ -53,6 +55,11 @@ class ConsoleService(Protocol):
     def approve_workitem(self, work_item_id: str, approved: bool = True) -> WorkItem | None: ...
 
     def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None: ...
+
+    def advance_workitem(self, work_item_id: str) -> WorkItem | None: ...
+
+    @property
+    def implemented_stages(self) -> frozenset[S]: ...
 
 
 class CreateProjectRequest(BaseModel):
@@ -159,7 +166,7 @@ def create_app(service: ConsoleService) -> FastAPI:
         wi = service.get_workitem(work_item_id)
         if wi is None:
             raise HTTPException(status_code=404, detail="work item not found")
-        return view_detail(wi, _read_text)
+        return view_detail(wi, _read_text, service.implemented_stages)
 
     @app.post("/api/workitems/{work_item_id}/approve")
     def approve_workitem(work_item_id: str, payload: ApproveRequest) -> dict[str, object]:
@@ -169,7 +176,7 @@ def create_app(service: ConsoleService) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e)) from e
         if wi is None:
             raise HTTPException(status_code=404, detail="work item not found")
-        return view_detail(wi, _read_text)
+        return view_detail(wi, _read_text, service.implemented_stages)
 
     @app.post("/api/workitems/{work_item_id}/decide")
     def decide_workitem(work_item_id: str, payload: DecideRequest) -> dict[str, object]:
@@ -179,7 +186,22 @@ def create_app(service: ConsoleService) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e)) from e
         if wi is None:
             raise HTTPException(status_code=404, detail="work item not found")
-        return view_detail(wi, _read_text)
+        return view_detail(wi, _read_text, service.implemented_stages)
+
+    @app.post("/api/workitems/{work_item_id}/advance")
+    def advance_workitem(work_item_id: str) -> dict[str, object]:
+        """人工单步推进一个阶段。
+
+        非法态（终态 / 待门禁 / 阶段未建设）→ 409 Conflict：请求本身合法，是资源
+        当前状态不允许。区别于 /decide 的 400（决策参数非法）。
+        """
+        try:
+            wi = service.advance_workitem(work_item_id)
+        except InvariantError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        if wi is None:
+            raise HTTPException(status_code=404, detail="work item not found")
+        return view_detail(wi, _read_text, service.implemented_stages)
 
     dist = _frontend_dist()
     if dist is not None:

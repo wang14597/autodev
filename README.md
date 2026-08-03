@@ -170,9 +170,9 @@ ruff format .
 
 ### 控制台（前端 + 后端）
 
-平台控制台以领域聚合根 **Project（项目）** 为中心，**两步流程**：先建项目（登记一个 git 仓库或本地路径 + **跟踪分支**（可留空取仓库默认），此时做一次性 setup：`git fetch` 同步远端 + 探测分支）→ 在项目下创建多个工作项（WorkItem，只填需求）。工作项后台自动驱动 需求录入→分诊→上下文收集（真调 Claude）→ 详情页展示完整生命周期与产出的上下文简报；其 worktree 以项目跟踪分支的最新（`origin/<branch>`）为基点。同一项目下的工作项**共享一次性 setup**（不再重复判断分支/拉远程）。点项目「刷新」会重新 `git fetch` 把远端更新同步到本地。导航：项目列表 → 项目详情（其工作项 + 在此新建 + 刷新 + 删除）→ 工作项详情。当前只跑到 CONTEXT 阶段，之后阶段（方案/评审/开发…）标"待建设"，随 F5–F8 接入。真调 Claude 需在能访问内网网关的环境（VPN）里运行。
+平台控制台以领域聚合根 **Project（项目）** 为中心，**两步流程**：先建项目（登记一个 git 仓库或本地路径 + **跟踪分支**（可留空取仓库默认），此时做一次性 setup：`git fetch` 同步远端 + 探测分支）→ 在项目下创建多个工作项（WorkItem，只填需求）。工作项后台自动驱动 需求录入→分诊→上下文收集（真调 Claude）→ 详情页展示完整生命周期与产出的上下文简报；其 worktree 以项目跟踪分支的最新（`origin/<branch>`）为基点。同一项目下的工作项**共享一次性 setup**（不再重复判断分支/拉远程）。点项目「刷新」会重新 `git fetch` 把远端更新同步到本地。导航：项目列表 → 项目详情（其工作项 + 在此新建 + 刷新 + 删除）→ 工作项详情。当前跑到**方案**阶段为止，评审及之后（评审/开发/验收…）标"待建设"，随 F5–F8 接入。工作项的 `autonomy_enabled` 是**节奏开关**：开＝自动挡（连续跑到平台能力边界）；关＝手动挡（只读收集段仍自动跑完，之后每个阶段由你点「推进」走一步）。真调 Claude 需在能访问内网网关的环境（VPN）里运行。
 
-- 后端：`src/autodev/webapp/`（FastAPI），用真实 `Project`/`WorkItem`/SQLite 仓储/`Engine` + F1/F3 适配器，有界驱动止于 DESIGN。
+- 后端：`src/autodev/webapp/`（FastAPI），用真实 `Project`/`WorkItem`/SQLite 仓储/`Engine` + F1/F3/分诊/方案适配器；驱动跑 需求录入→分诊→上下文→方案，止于评审。"平台能执行哪些阶段"是**单一真源**（`src/autodev/webapp/drive.py` 的 `IMPLEMENTED_STAGES`），驱动边界、"待建设"标记、「推进」按钮可用性三处共用同一份，扩容时一改三生效。
 - 前端：`frontend/`（Vite + React + TypeScript，TanStack Query 轮询，React Router），字体与 Markdown 渲染库本地打包，运行时零公网 CDN。
 
 **生产运行（构建后由后端一体托管）：**
@@ -209,18 +209,19 @@ python -m autodev.webapp                             # 默认 http://127.0.0.1:8
 
 ✅ **出站端口**
 - <!-- fact:ports -->11 个端口协议已定义：WorkItemRepository、ProjectRepository、WorkspacePort、TriagePort、ContextPort、DesignPort、ReviewPort、ExecutionPort、VerificationPort、DeliveryPort、EventPublisher
-- **6 个端口已真实实现**：
+- **7 个端口已真实实现**：
   - WorkItemRepository → SQLite 适配器（持久化/查询）
   - ProjectRepository → SQLite 适配器（项目聚合持久化）
   - EventPublisher → 内存事件总线
   - TriagePort → LlmTriageAdapter（直连 Messages API/Opus 4.8，强制 tool_use 结构化输出）
   - WorkspacePort → GitWorkspaceAdapter（git bare mirror + worktree，F1）
   - ContextPort → ClaudeContextAdapter（Claude Code 两遍收集→复核，F3）
-- **5 个端口当前为假实现**（mock/stub）：Design/Review/Execution/Verification/Delivery，真实 ACL 见下方"计划中"
-- 另有驱动侧适配器：项目控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），以 Project 为中心，用 F1+F3+真实分诊驱动工作项走 需求录入→分诊→上下文（按 `autonomy_enabled` 开关停在决策点或继续）
+  - DesignPort → ClaudeDesignAdapter（Claude Code 只读单遍产出方案 Markdown，F4）
+- **4 个端口当前为假实现**（mock/stub）：Review/Execution/Verification/Delivery，真实 ACL 见下方"计划中"
+- 另有驱动侧适配器：项目控制台（前端 `frontend/` + 后端 `src/autodev/webapp/`），以 Project 为中心驱动工作项走 需求录入→分诊→上下文→方案；节奏由 `autonomy_enabled` 决定（自动挡连续跑到能力边界，手动挡在收集段之后每阶段等人点「推进」），风险门禁照常挂起为 `WAIT_HUMAN` 交人审
 
 ✅ **测试覆盖**
-- **290 个测试全部通过**（另有 2 个 live/E2E 用例默认跳过，需 `AUTODEV_LIVE=1` 触发）
+- **341 个测试全部通过**（另有 3 个 live 用例默认跳过，需 `AUTODEV_LIVE=1` + 可用 claude/内网网关触发）
 - 涵盖：值对象、聚合不变式、状态转移、重试政策、分诊/自主策略、阶段处理器、LLM 分诊契约、端到端流程
 
 ### 计划中（后续切片）

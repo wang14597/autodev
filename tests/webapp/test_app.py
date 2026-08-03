@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from autodev.domain.enums import GatePoint
 from autodev.domain.enums import WorkflowState as S
 from autodev.domain.ids import ProjectId, WorkItemId
 from autodev.domain.project import Project
@@ -23,6 +24,11 @@ def _project(name: str = "demo", repo_source: str | None = None) -> Project:
 
 
 def _work_item(project: Project, goal: str = "加限流", state: S = S.INTAKE) -> WorkItem:
+    """构造合法转移到 `state` 的工作项(与 tests/webapp/test_views.py 的同名 helper 同风格)。
+
+    覆盖 TRIAGE/CONTEXT/DESIGN/REVIEW/WAIT_HUMAN/DONE/FAILED——早前版本在 CONTEXT
+    之后静默截断, 请求 DESIGN/DONE 的调用方会拿到一个 CONTEXT 工作项而不自知。
+    """
     wi = WorkItem.create(
         WorkItemId.new(),
         RepoRef(project.name),
@@ -35,6 +41,14 @@ def _work_item(project: Project, goal: str = "加限流", state: S = S.INTAKE) -
         wi.transition_to(S.TRIAGE, "stage ok", NOW)
     if state not in (S.INTAKE, S.TRIAGE):
         wi.transition_to(S.CONTEXT, "stage ok", NOW)
+    if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT, S.WAIT_HUMAN, S.DONE):
+        wi.transition_to(S.DESIGN, "stage ok", NOW)
+    if state is S.REVIEW:
+        wi.transition_to(S.REVIEW, "stage ok", NOW)
+    if state is S.WAIT_HUMAN:
+        wi.suspend(GatePoint.CONTEXT_GATE, "context", NOW)
+    if state is S.DONE:
+        wi.transition_to(S.DONE, "collect only", NOW)
     if state is S.FAILED and wi.state is not S.FAILED:
         wi.transition_to(S.FAILED, "failed: boom", NOW)
     return wi
@@ -50,9 +64,13 @@ class FakeProjectConsoleService:
         self,
         projects: list[Project] | None = None,
         workitems: list[WorkItem] | None = None,
+        advance_raises: bool = False,
+        implemented_stages: frozenset[S] | None = None,
     ) -> None:
         self._projects: dict[str, Project] = {p.id.value: p for p in (projects or [])}
         self._workitems: dict[str, WorkItem] = {wi.id.value: wi for wi in (workitems or [])}
+        self.advance_raises = advance_raises
+        self._implemented_stages = implemented_stages
 
     def _count(self, project_id: str) -> int:
         return sum(
@@ -139,6 +157,21 @@ class FakeProjectConsoleService:
 
     def decide_workitem(self, work_item_id: str, decision: str) -> WorkItem | None:
         return self._workitems.get(work_item_id)
+
+    def advance_workitem(self, work_item_id: str) -> WorkItem | None:
+        if self.advance_raises and work_item_id in self._workitems:
+            from autodev.domain.errors import InvariantError
+
+            raise InvariantError("cannot advance work item stopped by TERMINAL")
+        return self._workitems.get(work_item_id)
+
+    @property
+    def implemented_stages(self) -> frozenset[S]:
+        if self._implemented_stages is not None:
+            return self._implemented_stages
+        from autodev.webapp.drive import IMPLEMENTED_STAGES
+
+        return IMPLEMENTED_STAGES
 
 
 def _client(service: FakeProjectConsoleService) -> TestClient:
@@ -449,3 +482,51 @@ class TestSpaHosting:
             assert resp.status_code == 200, path
             assert resp.text == "<html>INDEX</html>", path
             assert "TOP SECRET" not in resp.text, path
+
+
+def test_advance_endpoint_returns_detail() -> None:
+    project = _project()
+    wi = _work_item(project, state=S.DESIGN)
+    client = _client(FakeProjectConsoleService([project], [wi]))
+
+    response = client.post(f"/api/workitems/{wi.id.value}/advance")
+
+    assert response.status_code == 200
+    # DESIGN ∈ 生产默认能力集合，手动挡（默认 autonomy_enabled=False）下的搁浅态 →
+    # next_action 必须精确是 "advance"，而不是"四态之一"这种恒真断言。
+    assert response.json()["next_action"] == "advance"
+
+
+def test_advance_endpoint_threads_service_capability_set() -> None:
+    """`/advance` 必须用 `service.implemented_stages`，不能悄悄退回生产默认集合。
+
+    fake 的能力集合特意排除 DESIGN（生产默认 IMPLEMENTED_STAGES 是包含的），工作项
+    停在 DESIGN。若路由把 `service.implemented_stages` 传参丢了、view_detail 退回
+    默认集合，DESIGN 就会被当作"已建设"从而判成 advance —— 断言必须精确到
+    "blocked"/"方案"，而不是宽松的集合成员判断，才能捕获这类回归。
+    """
+    project = _project()
+    wi = _work_item(project, state=S.DESIGN)
+    restricted = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT})
+    client = _client(FakeProjectConsoleService([project], [wi], implemented_stages=restricted))
+
+    response = client.post(f"/api/workitems/{wi.id.value}/advance")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["next_action"] == "blocked"
+    assert body["next_stage"] == "方案"
+
+
+def test_advance_endpoint_404_when_missing() -> None:
+    client = _client(FakeProjectConsoleService())
+    assert client.post("/api/workitems/nope/advance").status_code == 404
+
+
+def test_advance_endpoint_409_when_illegal_state() -> None:
+    """非法态（终态 / 待门禁 / 未建设）→ 409，而非 400/500，也绝不静默 200。"""
+    project = _project()
+    wi = _work_item(project, state=S.DONE)
+    client = _client(FakeProjectConsoleService([project], [wi], advance_raises=True))
+
+    assert client.post(f"/api/workitems/{wi.id.value}/advance").status_code == 409

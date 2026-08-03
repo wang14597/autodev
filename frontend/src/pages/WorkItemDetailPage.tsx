@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
+import { AdvancePanel } from '../components/AdvancePanel'
 import { BriefDocument } from '../components/BriefDocument'
 import { EmptyStage } from '../components/EmptyStage'
 import { FailurePanel } from '../components/FailurePanel'
@@ -7,6 +8,7 @@ import { LifelinePipeline } from '../components/LifelinePipeline'
 import { Notice } from '../components/Notice'
 import { StatusBadge } from '../components/StatusBadge'
 import { TriageBadge } from '../components/TriageBadge'
+import { useAdvanceWorkItem } from '../hooks/useAdvanceWorkItem'
 import { useDecideWorkItem } from '../hooks/useDecideWorkItem'
 import { useWorkItem } from '../hooks/useWorkItem'
 import styles from './WorkItemDetailPage.module.css'
@@ -15,6 +17,7 @@ export function WorkItemDetailPage() {
   const { pid, id } = useParams<{ pid: string; id: string }>()
   const { data: detail, isError, error, isLoading } = useWorkItem(id)
   const decide = useDecideWorkItem(id)
+  const advance = useAdvanceWorkItem(id)
 
   if (isError) {
     if (error instanceof ApiError && error.status === 404) {
@@ -123,6 +126,13 @@ export function WorkItemDetailPage() {
         <p className={styles.sectionTitle}>生命周期</p>
         <LifelinePipeline stages={detail.stages} state={detail.state} />
       </section>
+
+      <AdvancePanel
+        nextAction={detail.next_action}
+        nextStage={detail.next_stage}
+        onAdvance={() => advance.mutate()}
+        isPending={advance.isPending}
+      />
 
       {detail.context && (
         <BriefDocument

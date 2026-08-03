@@ -2,24 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { formatShortTime, isRunning, STATE_LABEL } from './workitem'
 
 describe('isRunning', () => {
-  it('is true for INTAKE/TRIAGE/CONTEXT', () => {
+  it('is true for the collect stages (INTAKE/TRIAGE/CONTEXT)', () => {
     expect(isRunning('INTAKE')).toBe(true)
     expect(isRunning('TRIAGE')).toBe(true)
     expect(isRunning('CONTEXT')).toBe(true)
   })
 
-  it('is false for every other state', () => {
-    for (const state of [
-      'DESIGN',
-      'REVIEW',
-      'IMPL',
-      'ACCEPT',
-      'VERIFY',
-      'SUBMIT_MR',
-      'DONE',
-      'WAIT_HUMAN',
-      'FAILED',
-    ] as const) {
+  it('is true for every executable stage where manual tempo can rest (DESIGN..SUBMIT_MR)', () => {
+    for (const state of ['DESIGN', 'REVIEW', 'IMPL', 'ACCEPT', 'VERIFY', 'SUBMIT_MR'] as const) {
+      expect(isRunning(state)).toBe(true)
+    }
+  })
+
+  it('is false for the genuine resting states (WAIT_HUMAN/DONE/FAILED)', () => {
+    for (const state of ['DONE', 'WAIT_HUMAN', 'FAILED'] as const) {
       expect(isRunning(state)).toBe(false)
     }
   })

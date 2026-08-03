@@ -108,3 +108,37 @@ def test_production_execution_and_verification_remain_stubs(
     assert isinstance(ctx.reviewer, UnavailableStage)
     assert isinstance(ctx.delivery, UnavailableStage)
     assert isinstance(ctx.designer, ClaudeDesignAdapter)
+
+
+def test_implemented_stages_matches_real_ports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """防漂移守卫：能力集合必须与生产组合根里"端口是否为桩"逐阶段一致。
+
+    这是本次设计要消灭的根因——同一事实多处手抄。谁加了真适配器却忘了更新集合，
+    这里就红。局限：下面的 stage→port 映射本身仍是手工维护的，但它住在测试里，
+    漂移的后果是测试大声失败，而不是线上静默错标「待建设」。
+    """
+    monkeypatch.setenv("AUTODEV_HOME", str(tmp_path))
+    from autodev.domain.enums import WorkflowState as S
+    from autodev.webapp.config import build_env_service
+    from autodev.webapp.drive import IMPLEMENTED_STAGES
+    from autodev.webapp.stubs import UnavailableStage
+
+    # INTAKE / ACCEPT 的处理器是纯函数（不碰端口），不参与本断言。
+    stage_port = {
+        S.TRIAGE: "triage",
+        S.CONTEXT: "gatherer",
+        S.DESIGN: "designer",
+        S.REVIEW: "reviewer",
+        S.IMPL: "executor",
+        S.VERIFY: "verifier",
+        S.SUBMIT_MR: "delivery",
+    }
+    ctx = build_env_service()._engine.ctx
+    for stage, port_name in stage_port.items():
+        port_is_real = not isinstance(getattr(ctx, port_name), UnavailableStage)
+        assert (stage in IMPLEMENTED_STAGES) == port_is_real, (
+            f"{stage.name}: 能力集合认为 {stage in IMPLEMENTED_STAGES}，"
+            f"而端口 ctx.{port_name} 实况为 {'真实' if port_is_real else '桩'}"
+        )

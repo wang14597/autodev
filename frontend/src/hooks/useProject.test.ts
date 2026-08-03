@@ -33,7 +33,10 @@ describe('projectRefetchInterval', () => {
   })
 
   it('stops polling once every workitem is resting', () => {
-    expect(projectRefetchInterval(detail([workitem('DESIGN'), workitem('FAILED')]))).toBe(false)
+    // DESIGN is no longer a resting state (manual tempo now routinely parks
+    // there awaiting a 「推进」 click while the stage may still be executing) —
+    // use WAIT_HUMAN/FAILED, the genuine resting states.
+    expect(projectRefetchInterval(detail([workitem('WAIT_HUMAN'), workitem('FAILED')]))).toBe(false)
   })
 
   it('stops polling for an empty workitem list or undefined detail', () => {

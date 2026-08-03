@@ -47,7 +47,9 @@ export function NewWorkItemForm({ projectId }: { projectId: string }) {
           onChange={(e) => setAutonomyEnabled(e.target.checked)}
           disabled={mutation.isPending}
         />
-        <span>让 AI 自主判断是否继续后续流程（不勾选则收集上下文后交你决定）</span>
+        <span>
+          自动挡：AI 连续推进后续阶段（不勾选＝手动挡，收集完上下文后每一步由你点「推进」）
+        </span>
       </label>
 
       {validationError && <p className={styles.error}>{validationError}</p>}
