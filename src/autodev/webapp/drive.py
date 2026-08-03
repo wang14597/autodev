@@ -23,7 +23,7 @@ from autodev.domain.work_item import WorkItem
 
 # 生产：平台已有真实适配器的阶段。新增真实适配器时改这里，
 # 由 tests/webapp/test_demo_app.py 的防漂移守卫锁死。
-IMPLEMENTED_STAGES: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT, S.DESIGN})
+IMPLEMENTED_STAGES: frozenset[S] = frozenset({S.INTAKE, S.TRIAGE, S.CONTEXT, S.DESIGN, S.REVIEW})
 
 # 演示组合根：下游为确定性演示适配器，全生命周期可跑。
 ALL_STAGES: frozenset[S] = frozenset(

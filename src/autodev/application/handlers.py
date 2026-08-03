@@ -105,8 +105,20 @@ def handle_review(work_item: WorkItem, ctx: StageContext, now: datetime) -> Stag
     return StageOutcome.ok("review", review)
 
 
+def _plan_for_impl(work_item: WorkItem) -> DesignArtifact:
+    """IMPL 的权威方案：评审产出的最终方案优先，缺失则退回 DESIGN 初稿。
+
+    评审判"无法自救"时不产终稿（指针为空），但那种情况会回退重设计、走不到 IMPL；
+    这里的兜底是给历史数据与不产终稿的假件留的。
+    """
+    review = work_item.artifacts.get("review")
+    if isinstance(review, ReviewArtifact) and review.final_plan_file:
+        return DesignArtifact(design_file=review.final_plan_file)
+    return cast(DesignArtifact, work_item.artifacts["design"])
+
+
 def handle_impl(work_item: WorkItem, ctx: StageContext, now: datetime) -> StageOutcome:
-    design = cast(DesignArtifact, work_item.artifacts["design"])
+    design = _plan_for_impl(work_item)
     context = work_item.artifacts["context"]
     handle = _handle_from_context(context)
     impl = ctx.executor.implement(design, handle)

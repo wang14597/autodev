@@ -127,10 +127,11 @@ class RecordingPublisher:
 def build_engine_with_fakes(repo, *, designer=None, full_fakes: bool = False):
     """组装一个全假件 Engine，供驱动层测试使用。
 
-    默认 reviewer/executor/verifier/delivery 仍是抛错桩（`UnavailableStage`），匹配
-    生产组合根对 DESIGN 之后阶段的建设现状。`full_fakes=True` 时把这四个下游端口
-    换成真正工作的假件（`FakeReview`/`FakeExecution`/`FakeVerification`/
-    `FakeDelivery`），供需要真正跑过 REVIEW 及之后阶段的判别性测试使用——例如证伪
+    reviewer 恒为真正工作的假件（`FakeReview`），匹配生产组合根 REVIEW 已接入真实
+    适配器的现状（Task 4）。默认 executor/verifier/delivery 仍是抛错桩
+    （`UnavailableStage`），匹配生产组合根对 IMPL 之后阶段的建设现状。`full_fakes=True`
+    时把这三个下游端口也换成真正工作的假件（`FakeExecution`/`FakeVerification`/
+    `FakeDelivery`），供需要真正跑过 IMPL 及之后阶段的判别性测试使用——例如证伪
     一个「循环直到非 MANUAL_HOLD 为止」的错误 `step` 实现：只有下游端口不抛错，
     多跑一阶段才会产生可观测的差异。
 
@@ -144,14 +145,14 @@ def build_engine_with_fakes(repo, *, designer=None, full_fakes: bool = False):
     from autodev.domain.policies import GatePolicy
     from autodev.webapp.stubs import UnavailableStage
 
+    reviewer: object = FakeReview()
     if full_fakes:
-        reviewer: object = FakeReview()
         executor: object = FakeExecution()
         verifier: object = FakeVerification()
         delivery: object = FakeDelivery()
     else:
         stub = UnavailableStage()
-        reviewer = executor = verifier = delivery = stub
+        executor = verifier = delivery = stub
     ctx = StageContext(
         FakeWorkspace(),
         FakeContext(),

@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from autodev.adapters.design_claude import ClaudeDesignAdapter
+from autodev.adapters.review_claude import ClaudeReviewAdapter
 from autodev.webapp.demo_config import build_demo_app
 
 
@@ -93,21 +94,21 @@ def test_approve_endpoint_progresses_high_risk_item(client: TestClient) -> None:
 def test_production_execution_and_verification_remain_stubs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """安全回归守卫：沙箱就绪（迭代 2.4）前，生产绝不接真实 Execution/Verification/Review/Delivery。"""
+    """安全回归守卫：沙箱就绪前，生产绝不接真实 Execution/Verification/Delivery。"""
     monkeypatch.setenv("AUTODEV_HOME", str(tmp_path))
     from autodev.adapters.triage_llm import LlmTriageAdapter
     from autodev.webapp.config import build_env_service
     from autodev.webapp.stubs import UnavailableStage
 
     ctx = build_env_service()._engine.ctx
-    # 分诊/方案设计已是真实适配器;Execution/Verification/Review/Delivery 在沙箱/评审
-    # 集成就绪前仍须为桩。
+    # 分诊/方案设计/方案评审已是真实适配器；Execution/Verification/Delivery 在沙箱
+    # 就绪前仍须为桩。
     assert isinstance(ctx.triage, LlmTriageAdapter)
     assert isinstance(ctx.executor, UnavailableStage)
     assert isinstance(ctx.verifier, UnavailableStage)
-    assert isinstance(ctx.reviewer, UnavailableStage)
     assert isinstance(ctx.delivery, UnavailableStage)
     assert isinstance(ctx.designer, ClaudeDesignAdapter)
+    assert isinstance(ctx.reviewer, ClaudeReviewAdapter)
 
 
 def test_implemented_stages_matches_real_ports(
