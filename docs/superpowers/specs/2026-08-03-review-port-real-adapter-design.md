@@ -34,7 +34,7 @@ CONTEXT → 【上下文后决策 · AutonomyPolicy，既有逻辑不变】 → 
         评审判定无法自救     → fail(LOGIC) → RetryPolicy 回退 DESIGN（CAP=3 后 FAILED）
 ```
 
-`handle_review`（`handlers.py`）的既有逻辑与本设计语义**已经吻合**，无需改动：调端口 → 未通过则 `fail(LOGIC)` → 通过则问 `GatePolicy` → 需人则 `suspend(REVIEW_GATE)`。本次只替换端口实现、扩驱动边界、加投影与前端面板，外加 §5 的回退修复。
+`handle_review`（`handlers.py`）的门禁与挂起逻辑与本设计语义吻合，无需改动：调端口 → 通过则问 `GatePolicy` → 需人则 `suspend(REVIEW_GATE)`。但**判回退分支不是"无需改动"**：`fail(LOGIC)` 前必须先 `work_item.add_artifact("review", review)` 把被否的评审结论落到工作项上——`Engine.advance()` 的四个结果分支里，`_on_failure`（`src/autodev/application/engine.py`）是唯一不调 `add_artifact` 的一个，若 `handle_review` 不主动补这一手，`artifacts["review"]` 在回退时根本不存在，§5 想打通的 `prior_review` 通道会恒为 `None`（通道建好了但没有任何东西流过去）。这行 `add_artifact` 不能删：`add_artifact` 是 append-only，后续通过的评审会追加为新版本，不会被这份被否的盖住。本次除替换端口实现、扩驱动边界、加投影与前端面板、§5 的回退修复外，还需在 `handle_review` 的回退分支补上这行落产物。
 
 人审恢复路径亦无需改动：`resume_target(REVIEW_GATE, "proceed")` → `S.IMPL`，随后停因为 `NOT_IMPLEMENTED`，前端显示「待建设」+ 灰按钮（手动挡迭代已消除搁浅）。
 

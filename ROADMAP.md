@@ -13,7 +13,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 ▌┐
 ▌│ 切片 4：信任梯度自动合并（⇒ 无人值守）        ▢ 未开始
 ▌├ 切片 3：中/复杂特性重流程 + 强上下文          ▢ 未开始
-▌├ 切片 2：真实 ACL + E2E 冒烟                  ◐ 进行中（Workspace/Context/Triage/Design 已落地）
+▌├ 切片 2：真实 ACL + E2E 冒烟                  ◐ 进行中（Workspace/Context/Triage/Design/Review 已落地）
 ▌└ 切片 1：行走骨架                             ✓ 已完成
 │
 ├─→ 控制台 + Project 一等概念（Web 平台外观）    ✓ 已交付
@@ -72,7 +72,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 
 **实现范围**：
 - ✓ **`Project` 领域聚合**：`ProjectId`、name、仓库来源、跟踪分支(`branch`)、project 级 `AutonomyDial`；配套 `ProjectRepository` 端口（`SqliteProjectRepository` / `InMemoryProjectRepository` 两实现）。`WorkItem` 增 `project_id` 归属、`base_branch`。出站端口由 9 增至 <!-- fact:ports -->11（新增 ProjectRepository）。
-- ✓ **Web 后端**（`src/autodev/webapp/`，FastAPI）：项目与工作项 REST API（`GET/POST /api/projects`、项目详情/刷新/删除、项目下建工作项、列分支、切默认分支）；**驱动**跑 INTAKE→TRIAGE→CONTEXT→DESIGN，止于 REVIEW（能力集合单一真源见 `src/autodev/webapp/drive.py` 的 `IMPLEMENTED_STAGES`）；工作项的 `autonomy_enabled` 开关在自动挡（连续跑到能力边界）与手动挡（收集段外每阶段等人点「推进」）间切换；生产托管 `frontend/dist`（SPA 回退 + 目录穿越防护）。
+- ✓ **Web 后端**（`src/autodev/webapp/`，FastAPI）：项目与工作项 REST API（`GET/POST /api/projects`、项目详情/刷新/删除、项目下建工作项、列分支、切默认分支）；**驱动**跑 INTAKE→TRIAGE→CONTEXT→DESIGN→REVIEW，止于 IMPL（能力集合单一真源见 `src/autodev/webapp/drive.py` 的 `IMPLEMENTED_STAGES`）；工作项的 `autonomy_enabled` 开关在自动挡（连续跑到能力边界）与手动挡（收集段外每阶段等人点「推进」）间切换；生产托管 `frontend/dist`（SPA 回退 + 目录穿越防护）。
 - ✓ **前端控制台**（`frontend/`，Vite + React + TypeScript + TanStack Query + React Router）：以「项目」为中心的两步导航（项目列表 → 项目详情 → 工作项详情），创建项目/工作项、生命周期流水线可视化、上下文简报渲染；字体与 Markdown 库本地打包（运行时零公网 CDN）；antd Select 模糊搜索切换默认分支。
 - ✓ **本地仓库直挂 worktree**：项目输入为本地 git 目录时自动登记并 `git worktree add`（共享对象库、秒级、不碰工作目录），登记持久化到 `~/.autodev/repos.json`。
 - ✓ **前端质量门禁**：typecheck / oxlint / vitest / build / prettier，接入 GitHub Actions frontend job。
@@ -82,7 +82,7 @@ AutoDev 按垂直切片逐步演进，从"最薄的行走骨架"到"全自动无
 - ✓ 前端组件与 hooks 有 vitest 覆盖
 - ✓ 未构建前端时回退占位页、API 仍可用
 
-**尚缺（转入切片 2/后续）**：真实浏览器端到端(E2E)冒烟、REVIEW 及之后阶段的真实驱动（当前止于 DESIGN，REVIEW 起为抛错桩）、Delivery 的 push/开 MR。
+**尚缺（转入切片 2/后续）**：真实浏览器端到端(E2E)冒烟、IMPL 及之后阶段的真实驱动（当前止于 REVIEW，IMPL 起为抛错桩）、Delivery 的 push/开 MR。
 
 ---
 
@@ -130,7 +130,7 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 
 ## 切片 2：真实 ACL + E2E 冒烟
 
-**◐ 进行中**（Workspace/Context/Triage/Design 四个真实适配器已落地，其余待实现）
+**◐ 进行中**（Workspace/Context/Triage/Design/Review 五个真实适配器已落地，其余待实现）
 
 **目标**：将 7 个假适配器替换为真实实现，跑通完整的端到端冒烟测试。
 
@@ -143,7 +143,7 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 | **WorkspacePort** | git mirror 缓存 + worktree/分支准备与清理 | ✅ 真实已实现（`GitWorkspaceAdapter`）**且已接入组合根**（`config.py`），有界驱动的 TRIAGE/CONTEXT 已真实使用 | 本地 git + bare mirror；后续补 push + GitLab 远程 |
 | **ContextPort** | 为 WorkItem 收集代码/文档上下文 | ✅ 真实已实现（`ClaudeContextAdapter` + `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出 Markdown 上下文文档，持久化到 `~/.autodev` |
 | **DesignPort** | 根据 Requirement + Context 生成 DesignProposal | ✅ 真实已实现（`ClaudeDesignAdapter`，复用 `ClaudeCodeRunner`，含 live 冒烟）且已接入组合根 | 已产出方案 Markdown 文档，持久化到 `~/.autodev` |
-| **ReviewPort** | 对 DesignProposal 做代码评审 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`） |
+| **ReviewPort** | 对 DesignProposal 做方案评审并产出最终方案 | ✅ 真实已实现（`ClaudeReviewAdapter`）**且已接入组合根** | 已产出最终方案 Markdown 文档，持久化到 `~/.autodev` |
 | **ExecutionPort** | 按 DesignProposal 编码实现 | ⬜ 假 | 真实（复用 `ClaudeCodeRunner`，需执行沙箱） |
 | **VerificationPort** | 跑测试/lint/构建得出 Verdict | ⬜ 假 | 真实（测试框架 + lint + 构建工具集成） |
 | **DeliveryPort** | 创建分支、push、开 MR、（后续）编排合并 | ⬜ 假 | 真实（GitLab API） |
@@ -151,8 +151,8 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 **核心工作**：
 - ✅ 实现 Workspace ACL：bare mirror 管理、worktree 生命周期（`GitWorkspaceAdapter`，REUSE/FETCH/CREATE 三模式）
 - ✅ Claude Code headless runner 基座（`ClaudeCodeRunner`：子进程调 `claude` CLI + 超时/重试 + transient/fatal/logic 失败分类）
-- ✅ 复用该基座实现 DesignPort 真实适配器（`ClaudeDesignAdapter`）；◐ Review / Execution 两个真实适配器待实现
-- ✅ 把真实 `WorkspacePort`/`ContextPort`/`TriagePort`/`DesignPort` 接入运行主循环，让 TRIAGE/CONTEXT/DESIGN 已真实驱动；⬜ REVIEW 及之后阶段仍待接入
+- ✅ Review 真实适配器已实现；◐ Execution 待实现
+- ✅ 把真实 `WorkspacePort`/`ContextPort`/`TriagePort`/`DesignPort`/`ReviewPort` 接入运行主循环，让 TRIAGE/CONTEXT/DESIGN/REVIEW 已真实驱动；⬜ IMPL 及之后阶段仍待接入
 - ⬜ 集成验证工具链：pytest / ruff / mypy / 构建脚本
 - ⬜ 集成 GitLab API：MR 创建、合并权限、pipeline 状态查询
 - ⏸ 集成 Feishu/Lark API：通知卡片、审批流、事件回调 —— **暂不纳入当前规划**（后续再议）

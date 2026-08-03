@@ -172,7 +172,7 @@ ruff format .
 
 平台控制台以领域聚合根 **Project（项目）** 为中心，**两步流程**：先建项目（登记一个 git 仓库或本地路径 + **跟踪分支**（可留空取仓库默认），此时做一次性 setup：`git fetch` 同步远端 + 探测分支）→ 在项目下创建多个工作项（WorkItem，只填需求）。工作项后台自动驱动 需求录入→分诊→上下文收集（真调 Claude）→ 详情页展示完整生命周期与产出的上下文简报；其 worktree 以项目跟踪分支的最新（`origin/<branch>`）为基点。同一项目下的工作项**共享一次性 setup**（不再重复判断分支/拉远程）。点项目「刷新」会重新 `git fetch` 把远端更新同步到本地。导航：项目列表 → 项目详情（其工作项 + 在此新建 + 刷新 + 删除）→ 工作项详情。当前跑到**方案**阶段为止，评审及之后（评审/开发/验收…）标"待建设"，随 F5–F8 接入。工作项的 `autonomy_enabled` 是**节奏开关**：开＝自动挡（连续跑到平台能力边界）；关＝手动挡（只读收集段仍自动跑完，之后每个阶段由你点「推进」走一步）。真调 Claude 需在能访问内网网关的环境（VPN）里运行。
 
-- 后端：`src/autodev/webapp/`（FastAPI），用真实 `Project`/`WorkItem`/SQLite 仓储/`Engine` + F1/F3/分诊/方案适配器；驱动跑 需求录入→分诊→上下文→方案，止于评审。"平台能执行哪些阶段"是**单一真源**（`src/autodev/webapp/drive.py` 的 `IMPLEMENTED_STAGES`），驱动边界、"待建设"标记、「推进」按钮可用性三处共用同一份，扩容时一改三生效。
+- 后端：`src/autodev/webapp/`（FastAPI），用真实 `Project`/`WorkItem`/SQLite 仓储/`Engine` + F1/F3/分诊/方案/评审适配器；驱动跑 需求录入→分诊→上下文→方案→评审，止于开发。"平台能执行哪些阶段"是**单一真源**（`src/autodev/webapp/drive.py` 的 `IMPLEMENTED_STAGES`），驱动边界、"待建设"标记、「推进」按钮可用性三处共用同一份，扩容时一改三生效。
 - 前端：`frontend/`（Vite + React + TypeScript，TanStack Query 轮询，React Router），字体与 Markdown 渲染库本地打包，运行时零公网 CDN。
 
 **生产运行（构建后由后端一体托管）：**
