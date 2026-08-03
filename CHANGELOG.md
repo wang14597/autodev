@@ -42,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **行为变更**：`autonomy_enabled` 为关的工作项，行为从"过了 CONTEXT_GATE 便连续跑"变为"每步等人点「推进」"。这是节奏开关泛化的直接后果(见上)；自动挡行为不变。
 
 ### Fixed
+- **ReviewPort 解析终审收尾（合并前最终评审）**：
+  - **BLOCKER — 整份输出套 ```` ```markdown ```` 围栏时哨兵判决恒不可达**：`parse_review_output`（`src/autodev/adapters/review_claude.py`）原先直接对首行做哨兵匹配；模型偶尔会给整份评审输出套一层外层围栏（与前端 `frontend/src/lib/markdown.ts:unwrapMarkdownFence` 是同一现象），一旦如此，`splitlines()[0]` 恒是围栏行、不等于 `REVIEW: APPROVED`/`REVIEW: BLOCKED` 中任何一个，触发"首行不是哨兵→降级为通过"的兜底——`REVIEW: BLOCKED` 因此永远无法被观测到，回退重设计通道恒不触发，围栏文本还会原样写进 `final-plan-*.md`。已在解析前新增 `_strip_outer_fence`：仅当去除首尾空白后首行整体是 ```` ``` ```` 或 ```` ```<语言标记> ```` 且末行整体是 ```` ``` ```` 时才剥掉首尾两行，正文内部真实代码围栏不受影响。新增 4 项单测覆盖（套围栏+BLOCKED 判回退、套围栏+APPROVED 正文不残留围栏、正文内部代码围栏原样保留、无外层围栏行为不变）。
+  - **分隔符代理判断在特定组合下静默丢正文行**：同文件"无 `---`"分支原先用"输出里是否存在 `---`"整体代理"有没有分隔符"，当模型漏写约定分隔符、而正文深处恰好有一条 `---`（如提示词要求的 `## 风险与取舍` 小节的 Markdown 水平线）、且紧邻哨兵的正文首行又恰好长得像 `- suggestion: ...` 列表项时，该行会被误吞进 `comments`、从持久化终稿里永久消失且不报错。已改为把"分隔符是否存在"的识别范围限定在紧跟哨兵的**前导块**内：从哨兵之后逐行扫描，只跨过空行与意见行前缀，遇到第一个既非空行也非意见行的行——若它整体是 `---` 才认定真分隔符；若前导块内没有紧邻的分隔符但全文深处存在 `---`，则不再猜测任何前导行是意见行，整段原样归入正文、`comments` 为空。新增单测覆盖该场景（退回修复前必然失败）。
+  - 设计文档 `docs/superpowers/specs/2026-08-03-review-port-real-adapter-design.md` §3/§3.1 同步回写上述两处修复的最终结论（此前仍写着无条件 `_persist` 与"意见行之后剩余全部当正文"的旧描述）。
+  - `src/autodev/adapters/demo.py` 顶部 docstring 更正为如实描述："生产对 DESIGN 及之后仍用抛错桩"已过时——DesignPort 与 ReviewPort 均已是真实适配器，仅 executor/verifier/delivery（IMPL 及之后）仍为桩。
+  - 前端 `frontend/src/pages/WorkItemDetailPage.tsx`：评审判回退时页面只渲染一串 `ReviewComments`、悬空无说明。已套上与其它块一致的 `<section>` + 标题，并用上 DTO 里此前未被读取的 `approved` 字段给出语义标题（通过="评审意见"，打回="评审未通过"）；`ReviewComments` 新增可选 `approved` 入参，在被打回时渲染"评审未通过，已退回重新设计"的说明文案，并把列表项的 React `key` 从评论原文改为索引参与的 key（避免同文案评论碰撞）。新增/扩展 vitest 覆盖。
+  - `tests/fakes.py` 的 `FakeReview` 打回意见此前是裸 `("rejected",)`，没有 `- blocking: ` 前缀，与生产 `_COMMENT_PREFIXES` 约定不一致；已补上前缀，新增测试锁死该约定。
 - **手动挡终审收尾（合并前最终评审）**：
   - **BLOCKER — resume 落地终态时误报推进失败**：`decide_workitem` 的 `proceed` 分支曾无条件提交 runner；`resume_target(GatePoint.MERGE_GATE, "proceed")` 是 `S.DONE`（终态），手动挡下提交的 `step` 经 `ensure_advanceable`→`classify` 判定 `TERMINAL` 抛 `InvariantError`，在 `SyncExecutor` 下把"已正常完成"的 200 变成 400。已改为 resume 后重读工作项、仅当 `classify` 为 `None`/`MANUAL_HOLD` 才提交 runner；新增 `tests/webapp/test_demo_service.py` 手动挡回归用例，全程 `autonomy_enabled=False` 走完 CONTEXT/REVIEW/MERGE 三个门到 DONE，断言不抛异常（回退旧逻辑可复现该用例失败）。
   - **缺失的安全性质**：`tests/webapp/test_drive.py` 新增对 `WAIT_HUMAN` 工作项的 `ensure_advanceable`/`step` 断言——此前只验证 `DONE`/`REVIEW`，若有人把豁免从"仅 `MANUAL_HOLD`"悄悄放宽到也豁免 `WAIT_HUMAN`，全套测试仍会绿灯，「推进」就能跨过一个开着的风险门禁。
