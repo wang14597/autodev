@@ -35,8 +35,10 @@ def _work_item(state: S = S.INTAKE) -> WorkItem:
         wi.transition_to(S.CONTEXT, "stage ok", NOW)
     if state not in (S.INTAKE, S.TRIAGE, S.CONTEXT, S.WAIT_HUMAN, S.DONE):
         wi.transition_to(S.DESIGN, "stage ok", NOW)
-    if state is S.REVIEW:
+    if state in (S.REVIEW, S.IMPL):
         wi.transition_to(S.REVIEW, "stage ok", NOW)
+    if state is S.IMPL:
+        wi.transition_to(S.IMPL, "stage ok", NOW)
     if state is S.WAIT_HUMAN:
         wi.suspend(GatePoint.CONTEXT_GATE, "context", NOW)
     if state is S.DONE:
@@ -58,7 +60,8 @@ def test_stage_views_context_state_marks_done_current_pending_blocked():
     assert statuses["TRIAGE"] == "done"
     assert statuses["CONTEXT"] == "current"
     assert statuses["DESIGN"] == "pending"  # DESIGN 已实现，不再是 "blocked"
-    for blocked_key in ("REVIEW", "IMPL", "ACCEPT", "VERIFY", "SUBMIT_MR"):
+    assert statuses["REVIEW"] == "pending"  # REVIEW 已实现（Task 4），不再是 "blocked"
+    for blocked_key in ("IMPL", "ACCEPT", "VERIFY", "SUBMIT_MR"):
         assert statuses[blocked_key] == "blocked"
     assert statuses["DONE"] == "pending"  # DONE 是终点标记，永不属于能力集合，显式排除
 
@@ -71,7 +74,8 @@ def test_stage_views_intake_state_marks_rest_pending_or_blocked():
     assert statuses["TRIAGE"] == "pending"
     assert statuses["CONTEXT"] == "pending"
     assert statuses["DESIGN"] == "pending"  # DESIGN 已实现，不再是 "blocked"
-    assert statuses["REVIEW"] == "blocked"
+    assert statuses["REVIEW"] == "pending"  # REVIEW 已实现（Task 4），不再是 "blocked"
+    assert statuses["IMPL"] == "blocked"
 
 
 def test_stage_views_design_state_marks_earlier_stages_done():
@@ -82,7 +86,8 @@ def test_stage_views_design_state_marks_earlier_stages_done():
     assert statuses["TRIAGE"] == "done"
     assert statuses["CONTEXT"] == "done"
     assert statuses["DESIGN"] == "current"
-    assert statuses["REVIEW"] == "blocked"
+    assert statuses["REVIEW"] == "pending"  # REVIEW 已实现（Task 4），不再是 "blocked"
+    assert statuses["IMPL"] == "blocked"
 
 
 def test_view_summary_fields():
@@ -248,7 +253,8 @@ def test_view_detail_design_none_when_absent():
 
 
 def test_design_no_longer_marked_blocked() -> None:
-    """回归：DESIGN 已实现并进入能力集合，停在 CONTEXT 的工作项不应再把「方案」标为待建设。
+    """回归：DESIGN/REVIEW 已实现并进入能力集合，停在 CONTEXT 的工作项不应再把
+    「方案」「评审」标为待建设。
 
     这正是本次发现的线上 bug——views 手抄了一份"未实现阶段"清单并漂移。
     """
@@ -256,7 +262,8 @@ def test_design_no_longer_marked_blocked() -> None:
     by_key = {v["key"]: v for v in stage_views(wi)}
 
     assert by_key["DESIGN"]["status"] == "pending"  # 曾错为 "blocked"
-    assert by_key["REVIEW"]["status"] == "blocked"  # REVIEW 确实还没建
+    assert by_key["REVIEW"]["status"] == "pending"  # REVIEW 已实现（Task 4），曾错为 "blocked"
+    assert by_key["IMPL"]["status"] == "blocked"  # IMPL 确实还没建
 
 
 def test_stage_views_blocked_follows_injected_capability() -> None:
@@ -297,12 +304,12 @@ def test_next_action_advance_during_collect_stage_is_intentional() -> None:
 
 
 def test_next_action_blocked_for_unimplemented_stage() -> None:
-    wi = _work_item(S.REVIEW)
+    wi = _work_item(S.IMPL)  # IMPL 是当前能力边界（REVIEW 已实现，见 Task 4）
     wi.autonomy_enabled = True
     detail = view_detail(wi, lambda _p: "")
 
     assert detail["next_action"] == "blocked"
-    assert detail["next_stage"] == "评审"
+    assert detail["next_stage"] == "开发"
 
 
 def test_next_action_decide_when_waiting_human() -> None:
@@ -342,3 +349,37 @@ def test_next_stage_still_projects_label_for_live_stage() -> None:
     detail = view_detail(wi, lambda _p: "")
 
     assert detail["next_stage"] == "方案"
+
+
+# --- Task 5：view_detail 暴露 review 字段（final_plan_file + comments）---
+
+
+def test_view_detail_projects_review_final_plan():
+    from autodev.domain.artifacts import ReviewArtifact
+
+    wi = _work_item(S.REVIEW)
+    wi.add_artifact(
+        "review",
+        ReviewArtifact(True, ("- suggestion: 补个测试",), final_plan_file="/x/final-plan-r1.md"),
+    )
+    detail = view_detail(wi, lambda p: "## 方案概述\n\n最终方案")
+    review = detail["review"]
+    assert review["final_plan_file"] == "/x/final-plan-r1.md"
+    assert review["approved"] is True
+    assert review["comments"] == ["- suggestion: 补个测试"]
+    assert "最终方案" in review["markdown"]
+
+
+def test_view_detail_review_markdown_empty_when_file_unreadable():
+    from autodev.domain.artifacts import ReviewArtifact
+
+    def boom(path: str) -> str:
+        raise OSError("EPERM")
+
+    wi = _work_item(S.REVIEW)
+    wi.add_artifact("review", ReviewArtifact(True, (), final_plan_file="/x/f.md"))
+    assert view_detail(wi, boom)["review"]["markdown"] == ""
+
+
+def test_view_detail_review_is_none_without_artifact():
+    assert view_detail(_work_item(S.CONTEXT), lambda p: "")["review"] is None

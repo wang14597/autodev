@@ -5,3 +5,6 @@ __pycache__/
 *.sqlite
 *.egg-info/
 .idea/
+
+# superpowers SDD 临时工作区(账本/简报/评审包),不入版本库
+.superpowers/

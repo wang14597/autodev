@@ -2,6 +2,7 @@ from datetime import datetime
 
 from autodev.application.context import StageContext
 from autodev.application.handlers import handle_context, handle_design, handle_intake, handle_triage
+from autodev.domain.artifacts import ContextArtifact, DesignArtifact, ReviewArtifact
 from autodev.domain.enums import FailureKind, TaskType, WorkspaceMode
 from autodev.domain.ids import WorkItemId
 from autodev.domain.policies import GatePolicy
@@ -102,3 +103,46 @@ def test_design_reads_context():
     out = handle_design(wi, _ctx(), NOW)
     assert out.kind == "success" and out.artifact_key == "design"
     assert out.artifact.design_file  # 非空指针
+
+
+def test_design_receives_prior_review_on_rollback():
+    """回退重设计必须把上一轮评审意见带给设计端口。
+
+    判别性：旧实现只传 (requirement, context)，本用例断言端口确实收到了那份评审产物；
+    回退旧实现时 seen == [None]，用例失败。
+    """
+    seen: list[object] = []
+
+    class RecordingDesign:
+        def propose(self, requirement, context, prior_review=None):
+            seen.append(prior_review)
+            return DesignArtifact(design_file="/x/design.md")
+
+    wi = _wi()
+    wi.add_artifact("context", ContextArtifact("/tmp/ws/wi1", "autodev/wi1", "/tmp/ctx.md"))
+    rejected = ReviewArtifact(False, ("- blocking: 方案方向不对",))
+    wi.add_artifact("review", rejected)
+
+    ctx = _ctx()
+    ctx.designer = RecordingDesign()
+    handle_design(wi, ctx, NOW)
+
+    assert seen == [rejected]
+
+
+def test_design_receives_none_on_first_pass():
+    """首轮设计（无评审产物）必须传 None，不能凭空造一个空评审。"""
+    seen: list[object] = []
+
+    class RecordingDesign:
+        def propose(self, requirement, context, prior_review=None):
+            seen.append(prior_review)
+            return DesignArtifact(design_file="/x/design.md")
+
+    wi = _wi()
+    wi.add_artifact("context", ContextArtifact("/tmp/ws/wi1", "autodev/wi1", "/tmp/ctx.md"))
+    ctx = _ctx()
+    ctx.designer = RecordingDesign()
+    handle_design(wi, ctx, NOW)
+
+    assert seen == [None]

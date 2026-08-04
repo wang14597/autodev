@@ -55,7 +55,7 @@ class ClaudeContextAdapter:
         try:
             improved = self._runner(prompt, Path(handle.location)).strip()
         except StageError:
-            return doc  # 复核失败(重试耗尽) → 降级回第一遍
+            return doc  # 复核这一遍调用失败 → 降级回第一遍(第一遍的结果仍然可用)
         if len(improved) < _MIN_REVIEW_LEN:
             # 复核调用成功了, 但产出空/过短/退化内容, 比第一遍结果更差 → 降级保留第一遍
             return doc

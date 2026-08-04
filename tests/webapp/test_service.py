@@ -16,7 +16,7 @@ from autodev.domain.policies import GatePolicy
 from autodev.webapp.drive import IMPLEMENTED_STAGES, auto_drive
 from autodev.webapp.service import SyncExecutor, WorkItemConsoleService
 from autodev.webapp.stubs import UnavailableStage
-from tests.fakes import FakeContext, FakeDesign, FakeTriage, FakeWorkspace
+from tests.fakes import FakeContext, FakeDesign, FakeReview, FakeTriage, FakeWorkspace
 
 NOW = datetime(2026, 7, 22, 12, 0, 0)
 
@@ -154,7 +154,9 @@ def test_list_get():
     assert svc.get(id_a).requirement.goal == "需求 A"  # type: ignore[union-attr]
 
 
-def test_drive_reaches_review_and_stops_without_calling_review_stub():
+def test_drive_reaches_review_gate_and_stops_without_calling_executor_stub():
+    """自动挡跑完 DESIGN/REVIEW 后止于 REVIEW_GATE 人审（REVIEW 已实现，见 Task 4）；
+    executor 桩（一旦被调用即 FATAL）证明流程确实没有越过该门继续跑到 IMPL。"""
     from autodev.domain.enums import TriageIntent
     from autodev.domain.ids import WorkItemId
     from autodev.domain.value_objects import AutonomyDial, RepoRef, Requirement
@@ -166,8 +168,8 @@ def test_drive_reaches_review_and_stops_without_calling_review_stub():
         FakeWorkspace(),
         FakeContext(),
         FakeDesign(),  # designer 真实产出
-        stage,  # reviewer 桩：一旦被调用即 FATAL
-        stage,
+        FakeReview(),  # reviewer 真实产出（REVIEW 已实现）
+        stage,  # executor 桩：一旦被调用即 FATAL
         stage,
         stage,
         FakeTriage(intent=TriageIntent.ACTIONABLE),
@@ -197,8 +199,11 @@ def test_drive_reaches_review_and_stops_without_calling_review_stub():
     auto_drive(repo, engine, wid, IMPLEMENTED_STAGES)
 
     got = repo.get(wid)
-    assert got.state == S.REVIEW  # 跑完 DESIGN，停在 REVIEW（∉IMPLEMENTED_STAGES）
+    # AutonomyDial.all_human() 使 REVIEW_GATE 总要人审——跑完 DESIGN/REVIEW 后
+    # 止于 WAIT_HUMAN，而非越过该门进入 IMPL（executor 桩若被调用会 FATAL）。
+    assert got.state is S.WAIT_HUMAN and got.pending_gate is GatePoint.REVIEW_GATE
     assert "design" in got.artifacts
+    assert "review" in got.artifacts
 
 
 def _project_service_with_fakes(
@@ -206,11 +211,11 @@ def _project_service_with_fakes(
 ):
     """返回 (ProjectConsoleService, work_repo)，执行器用 SyncExecutor 便于同步断言。
 
-    默认（`full_fakes=False`）下游 REVIEW 及之后仍是抛错桩，`implemented_stages`
-    默认取服务自身默认值（生产 `IMPLEMENTED_STAGES`，止于 DESIGN）——匹配
-    `advance_workitem` 那组用例的场景。`decide_workitem` 的手动/自动分流判别性
-    用例需要 REVIEW 真正跑起来才能把两条路径的落点区分开，届时传
-    `full_fakes=True, implemented_stages=ALL_STAGES`。
+    默认（`full_fakes=False`）下游 IMPL 及之后仍是抛错桩（reviewer 恒为真实假件，
+    见 `build_engine_with_fakes`），`implemented_stages` 默认取服务自身默认值
+    （生产 `IMPLEMENTED_STAGES`，止于 REVIEW）——匹配 `advance_workitem` 那组用例
+    的场景。`decide_workitem` 的手动/自动分流判别性用例需要 IMPL 及之后真正跑起来
+    才能把两条路径的落点区分开，届时传 `full_fakes=True, implemented_stages=ALL_STAGES`。
     """
     from autodev.adapters.project_repository import InMemoryProjectRepository
     from autodev.webapp.projects import ProjectRegistry
@@ -306,9 +311,9 @@ def test_decide_workitem_proceed_manual_mode_advances_exactly_one_stage() -> Non
     """手动挡：proceed 只跑 DESIGN 一阶段就停，不越过 REVIEW 继续（核心行为）。
 
     判别性关键：implemented_stages 用 ALL_STAGES 且下游用 full_fakes（真正能跑通
-    REVIEW 的假件），否则——正如生产 IMPLEMENTED_STAGES 止于 DESIGN 的默认配置下——
-    手动 step 与自动 auto_drive 会因为 REVIEW ∉ implemented 而在同一处停下，测不出
-    「先跑 auto_drive 才被 NOT_IMPLEMENTED 挡住」与「step 本就只跑一阶段」的区别。
+    IMPL 及之后的假件），否则——正如生产 IMPLEMENTED_STAGES 止于 REVIEW 的默认
+    配置下——手动 step 与自动 auto_drive 会因为 IMPL ∉ implemented 而在同一处停下，
+    测不出「先跑 auto_drive 才被 NOT_IMPLEMENTED 挡住」与「step 本就只跑一阶段」的区别。
     """
     from autodev.webapp.drive import ALL_STAGES
 

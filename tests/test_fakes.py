@@ -32,6 +32,20 @@ def test_fakes_satisfy_ports():
     assert dv.change_request_url
 
 
+def test_fake_review_rejection_comment_uses_production_blocking_prefix():
+    """FakeReview 打回时的意见须带 `- blocking: ` 前缀，与生产解析约定（`review_claude.py`
+    的 `_COMMENT_PREFIXES`）一致，否则依赖假件跑判回退分支的测试会掩盖真实前缀缺失的问题。
+    """
+    ws = FakeWorkspace(local=True)
+    h = ws.provision(WorkItemId.new(), RepoRef("repo-a"), WorkspaceMode.REUSE, "br")
+    ctx = FakeContext().gather(Requirement("g", "repo-a", (), "r"), h)
+    d = FakeDesign().propose(Requirement("g", "repo-a", (), "r"), ctx)
+    art = FakeReview(approved=False).review(d, ctx)
+    assert art.approved is False
+    assert art.comments
+    assert all(c.startswith("- blocking: ") for c in art.comments)
+
+
 def test_recording_publisher_collects():
     pub = RecordingPublisher()
     from autodev.domain.events import WorkItemCreated

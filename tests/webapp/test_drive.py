@@ -45,6 +45,7 @@ _PATH: dict[S, tuple[S, ...]] = {
     S.CONTEXT: (S.TRIAGE, S.CONTEXT),
     S.DESIGN: (S.TRIAGE, S.CONTEXT, S.DESIGN),
     S.REVIEW: (S.TRIAGE, S.CONTEXT, S.DESIGN, S.REVIEW),
+    S.IMPL: (S.TRIAGE, S.CONTEXT, S.DESIGN, S.REVIEW, S.IMPL),
     S.DONE: (S.TRIAGE, S.CONTEXT, S.DONE),  # CONTEXT→DONE 是"仅收集完成"的合法边
     S.FAILED: (S.TRIAGE, S.FAILED),
 }
@@ -80,18 +81,20 @@ def _wi(state: S, *, autonomy: bool) -> WorkItem:
         (S.WAIT_HUMAN, True, DriveStop.WAIT_HUMAN),
         (S.WAIT_HUMAN, False, DriveStop.WAIT_HUMAN),
         # 平台还做不了：优先于手动挡判断
-        (S.REVIEW, True, DriveStop.NOT_IMPLEMENTED),
-        (S.REVIEW, False, DriveStop.NOT_IMPLEMENTED),
+        (S.IMPL, True, DriveStop.NOT_IMPLEMENTED),
+        (S.IMPL, False, DriveStop.NOT_IMPLEMENTED),
         # 自动挡且能力内 → 可继续推进
         (S.INTAKE, True, None),
         (S.CONTEXT, True, None),
         (S.DESIGN, True, None),
+        (S.REVIEW, True, None),
         # 手动挡：收集段照旧连续跑
         (S.INTAKE, False, None),
         (S.TRIAGE, False, None),
         (S.CONTEXT, False, None),
         # 手动挡：离开收集段即等人点
         (S.DESIGN, False, DriveStop.MANUAL_HOLD),
+        (S.REVIEW, False, DriveStop.MANUAL_HOLD),
     ],
 )
 def test_classify_table(state: S, autonomy: bool, expected: DriveStop | None) -> None:
@@ -108,7 +111,8 @@ def test_wait_human_wins_over_not_implemented() -> None:
 
 
 def test_auto_drive_runs_continuously_to_capability_edge() -> None:
-    """自动挡：连续跑过 DESIGN，停在 REVIEW（不在能力集合内），且不调用 review 桩。"""
+    """自动挡：连续跑过 DESIGN/REVIEW，止于 REVIEW_GATE 人审（REVIEW 已实现，
+    不再是能力边界；`_wi` 用的 `AutonomyDial.all_human()` 使该门总要人审）。"""
     repo = InMemoryWorkItemRepository()
     engine = build_engine_with_fakes(repo)
     wi = _wi(S.INTAKE, autonomy=True)
@@ -116,9 +120,11 @@ def test_auto_drive_runs_continuously_to_capability_edge() -> None:
 
     stop = auto_drive(repo, engine, wi.id, IMPLEMENTED_STAGES)
 
-    assert stop is DriveStop.NOT_IMPLEMENTED
-    assert repo.get(wi.id).state is S.REVIEW
-    assert "design" in repo.get(wi.id).artifacts
+    assert stop is DriveStop.WAIT_HUMAN
+    got = repo.get(wi.id)
+    assert got.state is S.WAIT_HUMAN and got.pending_gate is GatePoint.REVIEW_GATE
+    assert "design" in got.artifacts
+    assert "review" in got.artifacts
 
 
 def test_manual_mode_auto_drive_stops_after_collect_stages() -> None:
@@ -157,7 +163,7 @@ def test_step_advances_exactly_one_stage() -> None:
     stop = step(repo, engine, wi.id, IMPLEMENTED_STAGES)
 
     assert repo.get(wi.id).state is S.REVIEW  # 只走了一步
-    assert stop is DriveStop.NOT_IMPLEMENTED
+    assert stop is DriveStop.MANUAL_HOLD  # REVIEW 已实现；手动挡下等人再点一次
 
 
 def test_step_ignores_manual_hold_but_refuses_other_stops() -> None:
@@ -176,7 +182,7 @@ def test_step_ignores_manual_hold_but_refuses_other_stops() -> None:
     with pytest.raises(InvariantError):
         step(repo, engine, done.id, IMPLEMENTED_STAGES)
 
-    blocked = _wi(S.REVIEW, autonomy=True)
+    blocked = _wi(S.IMPL, autonomy=True)  # IMPL 是当前能力边界（REVIEW 已实现）
     repo.save(blocked)
     with pytest.raises(InvariantError):
         step(repo, engine, blocked.id, IMPLEMENTED_STAGES)

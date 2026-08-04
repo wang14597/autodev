@@ -39,6 +39,25 @@ def test_propose_persists_design_doc(tmp_path):
     assert "context" in captured["prompt"].lower() or "上下文" in captured["prompt"]
 
 
+def test_propose_puts_prior_review_comments_into_prompt(tmp_path):
+    """回退重设计时，被否理由必须出现在提示词里——否则模型无从改进。"""
+    from autodev.domain.artifacts import ReviewArtifact
+
+    captured = {}
+
+    def runner(prompt: str, cwd: Path) -> str:
+        captured["prompt"] = prompt
+        return "## 方案概述\n\n改 app.py\n"
+
+    a = ClaudeDesignAdapter(runner=runner, autodev_home=tmp_path / "home", id_gen=lambda: "d2")
+    a.propose(
+        REQ,
+        _context(tmp_path),
+        ReviewArtifact(False, ("- blocking: 漏了鉴权中间件",)),
+    )
+    assert "漏了鉴权中间件" in captured["prompt"]
+
+
 def test_propose_propagates_stage_error(tmp_path):
     from autodev.domain.enums import FailureKind
     from autodev.domain.errors import StageError

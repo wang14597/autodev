@@ -182,7 +182,12 @@ def _artifact_to_dict(a: object) -> dict:
     if isinstance(a, DesignArtifact):
         return {"__t": t, "design_file": a.design_file}
     if isinstance(a, ReviewArtifact):
-        return {"__t": t, "approved": a.approved, "comments": list(a.comments)}
+        return {
+            "__t": t,
+            "approved": a.approved,
+            "comments": list(a.comments),
+            "final_plan_file": a.final_plan_file,
+        }
     if isinstance(a, ImplArtifact):
         return {"__t": t, "diff": a.diff, "test_passed": a.test_passed, "summary": a.summary}
     if isinstance(a, AcceptanceArtifact):
@@ -221,7 +226,8 @@ def _artifact_from_dict(d: dict) -> object:
         # 无旧行兼容负担：DESIGN 此前为桩，生产从未持久化过 DesignArtifact
         return DesignArtifact(d["design_file"])
     if t == "ReviewArtifact":
-        return ReviewArtifact(d["approved"], tuple(d["comments"]))
+        # 旧行无 final_plan_file 键 → 兜底空串（向后兼容）
+        return ReviewArtifact(d["approved"], tuple(d["comments"]), d.get("final_plan_file", ""))
     if t == "ImplArtifact":
         return ImplArtifact(d["diff"], d["test_passed"], d["summary"])
     if t == "AcceptanceArtifact":

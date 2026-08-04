@@ -13,6 +13,7 @@ from autodev.domain.artifacts import (
     AcceptanceArtifact,
     ContextArtifact,
     DesignArtifact,
+    ImplArtifact,
 )
 from autodev.domain.enums import FailureKind, GatePoint, TaskType
 from autodev.domain.enums import WorkflowState as S
@@ -110,6 +111,41 @@ def test_submit_mr_suspends_at_merge_gate():
     out = handle_submit_mr(_wi(dial), ctx, NOW)
     assert out.kind == "suspend" and out.gate_point is GatePoint.MERGE_GATE
     assert out.artifact.change_request_url
+
+
+def test_impl_uses_final_plan_from_review():
+    """IMPL 的权威输入是评审终稿，不是 DESIGN 初稿。"""
+    from autodev.domain.artifacts import ReviewArtifact
+
+    seen: list[str] = []
+
+    class RecordingExecution:
+        def implement(self, design, handle):
+            seen.append(design.design_file)
+            return ImplArtifact("--- diff ---", True, "recorded")
+
+    ctx, dial = _ctx()
+    wi = _wi(dial)
+    wi.add_artifact("review", ReviewArtifact(True, (), final_plan_file="/x/final-plan-r1.md"))
+    ctx.executor = RecordingExecution()
+    handle_impl(wi, ctx, NOW)
+    assert seen == ["/x/final-plan-r1.md"]
+
+
+def test_impl_falls_back_to_design_when_no_final_plan():
+    """无评审终稿（历史数据 / 判回退）时退回 DESIGN 初稿，不能崩。"""
+    seen: list[str] = []
+
+    class RecordingExecution:
+        def implement(self, design, handle):
+            seen.append(design.design_file)
+            return ImplArtifact("--- diff ---", True, "recorded")
+
+    ctx, dial = _ctx()
+    wi = _wi(dial)
+    ctx.executor = RecordingExecution()
+    handle_impl(wi, ctx, NOW)
+    assert seen == ["/fake/design/x.md"]
 
 
 def test_handlers_registry_covers_all_active_states():

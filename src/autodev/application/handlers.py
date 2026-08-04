@@ -9,6 +9,7 @@ from autodev.domain.artifacts import (
     AcceptanceArtifact,
     ContextArtifact,
     DesignArtifact,
+    ReviewArtifact,
     TriageArtifact,
 )
 from autodev.domain.enums import (
@@ -81,7 +82,11 @@ def handle_context(work_item: WorkItem, ctx: StageContext, now: datetime) -> Sta
 
 def handle_design(work_item: WorkItem, ctx: StageContext, now: datetime) -> StageOutcome:
     context = cast(ContextArtifact, work_item.artifacts["context"])
-    artifact = ctx.designer.propose(work_item.requirement, context)
+    # 回退重设计时把上一轮评审意见带回设计员：否则同样输入产同样方案、招来同样打回，
+    # 烧完 RetryPolicy 的 CAP 后收敛 FAILED（这条回退路径此前不可达，故从未暴露）。
+    prior = work_item.artifacts.get("review")
+    prior_review = prior if isinstance(prior, ReviewArtifact) else None
+    artifact = ctx.designer.propose(work_item.requirement, context, prior_review)
     return StageOutcome.ok("design", artifact)
 
 
@@ -90,6 +95,9 @@ def handle_review(work_item: WorkItem, ctx: StageContext, now: datetime) -> Stag
     design = cast(DesignArtifact, work_item.artifacts["design"])
     review = ctx.reviewer.review(design, context)
     if not review.approved:
+        # 被否的评审结论本身是产物：必须落盘，否则回退重设计时 handle_design 取不到
+        # 上一轮意见（engine._on_failure 不落产物），prior_review 通道永远是 None。
+        work_item.add_artifact("review", review)
         return StageOutcome.fail(FailureKind.LOGIC, f"review rejected: {review.comments}")
     decision = ctx.gate_policy.decide(work_item, GatePoint.REVIEW_GATE)
     if decision.needs_human:
@@ -97,8 +105,20 @@ def handle_review(work_item: WorkItem, ctx: StageContext, now: datetime) -> Stag
     return StageOutcome.ok("review", review)
 
 
+def _plan_for_impl(work_item: WorkItem) -> DesignArtifact:
+    """IMPL 的权威方案：评审产出的最终方案优先，缺失则退回 DESIGN 初稿。
+
+    评审判"无法自救"时不产终稿（指针为空），但那种情况会回退重设计、走不到 IMPL；
+    这里的兜底是给历史数据与不产终稿的假件留的。
+    """
+    review = work_item.artifacts.get("review")
+    if isinstance(review, ReviewArtifact) and review.final_plan_file:
+        return DesignArtifact(design_file=review.final_plan_file)
+    return cast(DesignArtifact, work_item.artifacts["design"])
+
+
 def handle_impl(work_item: WorkItem, ctx: StageContext, now: datetime) -> StageOutcome:
-    design = cast(DesignArtifact, work_item.artifacts["design"])
+    design = _plan_for_impl(work_item)
     context = work_item.artifacts["context"]
     handle = _handle_from_context(context)
     impl = ctx.executor.implement(design, handle)

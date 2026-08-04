@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import cast
@@ -19,6 +20,8 @@ from autodev.domain.policies import RetryPolicy, TransitionRules
 from autodev.domain.ports import EventPublisher, WorkItemRepository
 from autodev.domain.value_objects import WorkspaceHandle
 from autodev.domain.work_item import WorkItem
+
+logger = logging.getLogger(__name__)
 
 
 class Engine:
@@ -83,6 +86,17 @@ class Engine:
 
     def _on_failure(self, wi: WorkItem, outcome, now: datetime) -> None:
         decision = self.retry_policy.decide(wi.state, outcome.failure_kind, wi.retry_ledger)
+        # 唯一的阶段失败痕迹：一个跑了十几分钟又失败的阶段, 若这里不记, 平台侧什么都
+        # 查不到(uvicorn 日志只有 HTTP 行)。含阶段/类型/原因/接下来干什么, 四要素齐全。
+        logger.warning(
+            "stage %s failed for work item %s (%s): %s -> %s%s",
+            wi.state.name,
+            wi.id.value,
+            outcome.failure_kind.name,
+            outcome.message,
+            decision.action,
+            f" to {decision.target.name}" if decision.target is not None else "",
+        )
         if decision.action == "retry":
             wi.record_retry(decision.key)  # 状态不变, 下轮重试
         elif decision.action == "rollback":

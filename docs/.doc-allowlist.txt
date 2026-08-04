@@ -23,6 +23,8 @@ Transition
 # Python 内置(非仓库自定义符号)
 KeyError
 True
+None
+OSError
 
 # 前端 TS 类型/DTO(镜像后端 views.py, 定义在 frontend/src/api/types.ts, 非 src/autodev)
 TriageView
@@ -39,6 +41,7 @@ StatusBadge
 WorkItemDetailPage
 BriefDocument
 AdvancePanel
+ReviewComments
 
 # 历史/未来设计文档中的概念符号:
 # TriagePolicy —— 切片 2.1 的硬规则分诊,已被 LLM 分诊 TriagePort 取代(历史文档仍引用)

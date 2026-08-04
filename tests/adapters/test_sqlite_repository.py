@@ -310,3 +310,30 @@ def test_design_artifact_roundtrip_pointer(tmp_path):
     back = _artifact_from_dict(_artifact_to_dict(art))
     assert isinstance(back, DesignArtifact)
     assert back.design_file == "/home/.autodev/workitems/wi1/design-abc.md"
+
+
+def test_review_artifact_round_trips_final_plan_pointer(tmp_path):
+    """评审产物的最终方案指针必须能存能取——否则重启后下游拿不到权威方案。"""
+    from autodev.domain.artifacts import ReviewArtifact
+
+    repo = SqliteWorkItemRepository(str(tmp_path / "db.sqlite3"))
+    wi = _wi()
+    wi.add_artifact(
+        "review",
+        ReviewArtifact(True, ("- suggestion: 补个测试",), final_plan_file="/x/final-plan-a1.md"),
+    )
+    repo.save(wi)
+
+    loaded = repo.get(wi.id)
+    art = loaded.artifacts["review"]
+    assert art.approved is True
+    assert art.comments == ("- suggestion: 补个测试",)
+    assert art.final_plan_file == "/x/final-plan-a1.md"
+
+
+def test_review_artifact_from_old_row_without_pointer_defaults_empty(tmp_path):
+    """旧行没有该键时兜底空串（照 TriageArtifact 的 risk/signals 先例）。"""
+    from autodev.adapters.sqlite_repository import _artifact_from_dict
+
+    art = _artifact_from_dict({"__t": "ReviewArtifact", "approved": False, "comments": ["x"]})
+    assert art.final_plan_file == ""

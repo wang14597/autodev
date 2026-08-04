@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
-from autodev.domain.artifacts import ContextArtifact, DesignArtifact
+from autodev.domain.artifacts import ContextArtifact, DesignArtifact, ReviewArtifact
 from autodev.domain.value_objects import Requirement
 
 
@@ -26,12 +26,22 @@ class ClaudeDesignAdapter:
         self._home = autodev_home
         self._id_gen = id_gen
 
-    def propose(self, requirement: Requirement, context: ContextArtifact) -> DesignArtifact:
-        doc = self._generate(requirement, context)
+    def propose(
+        self,
+        requirement: Requirement,
+        context: ContextArtifact,
+        prior_review: ReviewArtifact | None = None,
+    ) -> DesignArtifact:
+        doc = self._generate(requirement, context, prior_review)
         path = self._persist(context, requirement, doc)
         return DesignArtifact(design_file=str(path))
 
-    def _generate(self, requirement: Requirement, context: ContextArtifact) -> str:
+    def _generate(
+        self,
+        requirement: Requirement,
+        context: ContextArtifact,
+        prior_review: ReviewArtifact | None = None,
+    ) -> str:
         prompt = (
             "你在一个代码仓库工作目录里。请先阅读已收集的上下文文档(路径见下), 再只读调查相关代码, "
             "为下述需求产出一份 Markdown 格式的实现方案, 包含以下小节: "
@@ -43,6 +53,12 @@ class ClaudeDesignAdapter:
             f"需求: {requirement.goal}\n\n"
             f"已收集的上下文文档路径(可直接读取): {context.context_file}"
         )
+        if prior_review is not None and prior_review.comments:
+            prompt += (
+                "\n\n注意: 上一轮方案已被评审否决, 理由如下。"
+                "请针对性重做, 不要重复同样的选择:\n"
+                + "\n".join(f"- {c}" for c in prior_review.comments)
+            )
         return self._runner(prompt, Path(context.workspace_location)).strip()
 
     def _persist(self, context: ContextArtifact, requirement: Requirement, doc: str) -> Path:
