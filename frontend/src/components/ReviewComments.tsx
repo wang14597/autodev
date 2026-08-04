@@ -18,10 +18,7 @@ export function ReviewComments({ comments, approved }: ReviewCommentsProps) {
       )}
       <ul className={styles.list} data-testid="review-comments">
         {comments.map((c, i) => (
-          <li
-            key={`${i}-${c}`}
-            data-kind={c.startsWith('- blocking:') ? 'blocking' : 'suggestion'}
-          >
+          <li key={`${i}-${c}`} data-kind={c.startsWith('- blocking:') ? 'blocking' : 'suggestion'}>
             {c.replace(/^- (blocking|suggestion):\s*/, '')}
           </li>
         ))}
