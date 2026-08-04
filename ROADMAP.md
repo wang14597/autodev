@@ -162,6 +162,10 @@ INTAKE → TRIAGE → CONTEXT → DESIGN → REVIEW → IMPL → ACCEPT → VERI
 - 完整推进 9 个阶段，真实改一个开源参考项目
 - 验证 MR 最终被创建、草稿分支正确
 
+**已知债务（评审阶段落地时记录，2026-08-03）**：
+- **首行哨兵协议尚无真实模型验证**：评审的判决（通过 / 打回）靠约定 `claude` 输出首行为哨兵取出，解析侧已覆盖围栏包裹、缺分隔符等退化形态，但 `@pytest.mark.live` 冒烟需 `AUTODEV_LIVE=1` + 可用网关，至今**没有一次真跑记录**。判决通道的唯一入口目前建立在"真实模型会遵守该格式"这一假设上。降级方向是安全的（认不出即判通过、多走一次人审），但在 `ExecutionPort` 真实落地前必须补这次验证。
+- **失败结果不落产物的不对称**：`Engine._on_failure` 是四个结果分支里唯一不调 `add_artifact` 的，于是 `handle_review` 判回退时得自己补一手落产物（否则回退重设计取不到上一轮意见）。这是目前唯一的破例点。建议给 `StageOutcome.fail` 用上它已有的 `artifact_key` / `artifact` 字段、由 `_on_failure` 统一落盘，并顺带审 `handle_verify` 是否也该落失败产物。
+
 **Observability 基础**：
 - 每个 WorkItem 的完整 trace（所有阶段时间、成本、输出）
 - 实时日志输出到 stdout + 文件
