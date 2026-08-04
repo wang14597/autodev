@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -32,30 +31,30 @@ def _classify(stderr: str) -> FailureKind:
     return FailureKind.LOGIC
 
 
+_TWO_HOURS = 7200
+
+
 class ClaudeCodeRunner:
+    """调 `claude` CLI 的共用基座：一次子进程调用，失败即上抛。
+
+    **不做任何重试**。重试只保留引擎那一层（`RetryPolicy`）——它的计数落在
+    `retry_ledger`、状态变更进 `history`，可见且持久化。此处曾有一层内部重试，
+    与阶段级重试嵌套相乘，上限远超直觉且全程静默无痕。
+
+    超时 2 小时：Claude Code CLI 的任务时长不可控，短超时会把接近完成的工作整个
+    丢弃重来（实测评审阶段连续两次在 600 秒被杀，约 19 分钟模型工作作废）。
+    """
+
     def __init__(
         self,
         run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-        timeout: int = 600,
-        max_retries: int = 3,
-        sleep: Callable[[float], None] = time.sleep,
+        timeout: int = _TWO_HOURS,
     ) -> None:
         self._run = run
         self._timeout = timeout
-        self._max_retries = max_retries
-        self._sleep = sleep
 
     def run(self, prompt: str, cwd: Path, permission_mode: str = "plan") -> str:
-        attempt = 0
-        while True:
-            try:
-                return self._invoke(prompt, cwd, permission_mode)
-            except StageError as e:
-                if e.failure_kind is FailureKind.TRANSIENT and attempt < self._max_retries:
-                    attempt += 1
-                    self._sleep(min(2**attempt, 30))
-                    continue
-                raise
+        return self._invoke(prompt, cwd, permission_mode)
 
     def _invoke(self, prompt: str, cwd: Path, permission_mode: str) -> str:
         try:

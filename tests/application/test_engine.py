@@ -53,6 +53,29 @@ def _wi(dial):
     )
 
 
+def test_stage_failure_is_logged_with_kind_and_next_action(caplog):
+    """阶段失败必须留下一行日志——含阶段、失败类型、原因、以及接下来干什么。
+
+    没有它，一次跑了十几分钟又失败的阶段在平台侧不留任何痕迹：实测中评审阶段连续
+    两次被超时杀掉，只能靠 claude CLI 自己的会话文件才还原出时间线，平台日志里
+    只有 HTTP 行。判别性：去掉日志调用则 caplog 为空。
+    """
+    import logging
+
+    dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))
+    repo, pub = InMemoryWorkItemRepository(), RecordingPublisher()
+    wi = _wi(dial)
+    repo.save(wi)
+    with caplog.at_level(logging.WARNING, logger="autodev.application.engine"):
+        run_until_quiescent(repo, _engine(repo, pub, review_ok=False))
+
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "REVIEW" in text  # 哪个阶段
+    assert "LOGIC" in text  # 失败类型
+    assert "rollback" in text or "fail" in text  # 接下来干什么
+    assert str(wi.id.value) in text  # 哪个工作项
+
+
 def test_runs_until_merge_gate_suspend():
     # REVIEW_GATE 自动、MERGE_GATE 人审
     dial = AutonomyDial(frozenset({(TaskType.SMALL_CHANGE, "repo-a", GatePoint.REVIEW_GATE)}))

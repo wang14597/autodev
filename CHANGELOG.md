@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation-consistency CI: Layer 3 non-blocking AI docs advisor, implemented as a **local `pre-push` hook** (`scripts/docs_advise.py`, wired via the `pre-commit` `pre-push` stage) that prints a short staleness-suspect list to the developer's terminal before `git push`; it degrades gracefully (never blocks the push) whenever the environment is unavailable (no VPN, no local Claude Code session, timeout, etc.).
 
 ### Changed
+- **Claude Code 调用治理：超时 2 小时 + 去掉适配器层重试 + 阶段失败打日志**（真实跑评审阶段暴露的三个工程缺陷，一并处理）。
+  - **超时 600 秒 → 7200 秒(2 小时)**，所有 `claude` 调用统一。600 秒是当初只有上下文收集阶段时定的，而评审要读两份文档再去 monorepo 里只读调查代码，真实仓库上常态超过 10 分钟。后果不是"慢"，是**每次超时把一份做了近 10 分钟、快完成的工作整个丢弃重来**：实测一次点击触发 3 次调用（9分15秒被杀 / 9分55秒被杀 / 6分16秒成功），墙上耗时 26 分半，约 19 分钟模型工作作废、花费 3 倍。
+  - **`ClaudeCodeRunner` 不再做任何重试**（`max_retries` / `sleep` 构造参数一并移除），一次调用，失败即上抛。此前它与引擎 `RetryPolicy` 的阶段级重试**嵌套相乘**，最坏上限远超直觉，且内部循环全程静默无痕。重试现在只保留引擎那一层——计数落在 `retry_ledger`、状态变更进 `history`，可见且持久化。副作用：runner 单测不再有真实 `sleep`，该文件从 28 秒降到 0.19 秒。
+  - **阶段失败打日志**：`Engine._on_failure` 记一行含阶段 / 工作项 id / `FailureKind` / 原因 / 后续动作(retry|rollback|fail 及目标态)。此前 `StageError` 哪儿都不记，一个跑了十几分钟又失败的阶段在平台侧零痕迹——上述 3 次调用的时间线只能靠 `claude` CLI 自己的会话文件反推，uvicorn 日志里只有 HTTP 行。`webapp/__main__.py` 同步配置日志格式，保证输出带时间戳（否则只会落到 `logging` 的 lastResort handler，无时间信息）。
 - **ROADMAP 与代码对齐（2026-07-25）**：`ROADMAP.md` 补入「控制台 + Project 一等概念（0.1.2）」里程碑，切片 2 标注为进行中（`WorkspacePort`/`ContextPort` 两个真实 ACL 适配器已落地，其余 5 个仍为假件），并校准测试规模与时间线。同步在 `docs/.doc-allowlist.txt` 加入前端 antd 组件名（ConfigProvider/Select）以修复既有的伪造符号误报。
 - `ContextArtifact` changed from carrying inline collected content to a **pointer**: it now holds `context_file` (path to the persisted Markdown result under `~/.autodev`) instead of embedding the context text directly in the artifact.
 - Repo CI migrated from GitLab CI to **GitHub Actions** (`.github/workflows/ci.yml`); the contribution flow for this repo is now a **GitHub PR** (fork/branch → PR) instead of a GitLab MR.

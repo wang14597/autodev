@@ -25,7 +25,7 @@ def test_run_timeout_transient(tmp_path):
         raise subprocess.TimeoutExpired("claude", 1)
 
     with pytest.raises(StageError) as ei:
-        ClaudeCodeRunner(run=fake, max_retries=0).run("p", tmp_path)
+        ClaudeCodeRunner(run=fake).run("p", tmp_path)
     assert ei.value.failure_kind is FailureKind.TRANSIENT
 
 
@@ -38,17 +38,38 @@ def test_run_missing_binary_fatal(tmp_path):
     assert ei.value.failure_kind is FailureKind.FATAL
 
 
-def test_run_retries_transient_then_succeeds(tmp_path):
+def test_run_does_not_retry_transient_failures(tmp_path):
+    """瞬时失败只调一次就上抛——runner 内部不再重试。
+
+    判别性：旧实现对 TRANSIENT 会重试到 max_retries，calls["n"] 会 > 1。
+    去掉这层的理由见 CHANGELOG：它与引擎 RetryPolicy 的阶段级重试嵌套相乘，
+    上限远超直觉，且整个过程静默无痕。重试现在只保留引擎那一层（计数落在
+    retry_ledger、状态变更进 history，可见且持久化）。
+    """
     calls = {"n": 0}
 
     def fake(*a, **k):
         calls["n"] += 1
-        if calls["n"] < 3:
-            return subprocess.CompletedProcess(a, 1, stdout="", stderr="connection timed out")
-        return subprocess.CompletedProcess(a, 0, stdout="OK", stderr="")
+        return subprocess.CompletedProcess(a, 1, stdout="", stderr="connection timed out")
 
-    out = ClaudeCodeRunner(run=fake, max_retries=3, sleep=lambda s: None).run("p", tmp_path)
-    assert out == "OK" and calls["n"] == 3
+    with pytest.raises(StageError) as ei:
+        ClaudeCodeRunner(run=fake).run("p", tmp_path)
+    assert ei.value.failure_kind is FailureKind.TRANSIENT
+    assert calls["n"] == 1
+
+
+def test_default_timeout_is_two_hours(tmp_path):
+    """默认超时 2 小时：Claude Code CLI 的任务时长不可控，短超时会把接近完成的
+    工作整个丢弃重来（实测评审阶段连续两次在 600 秒被杀，约 19 分钟模型工作作废）。
+    """
+    seen = {}
+
+    def fake(cmd, **k):
+        seen["timeout"] = k.get("timeout")
+        return subprocess.CompletedProcess(cmd, 0, stdout="x", stderr="")
+
+    ClaudeCodeRunner(run=fake).run("p", tmp_path)
+    assert seen["timeout"] == 7200
 
 
 def test_run_invokes_expected_args(tmp_path):
